@@ -12,12 +12,14 @@ import {
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
 import { useAuth } from '../contexts/AuthContext';
 import AssetService from '../services/assetService';
 import Toast from '../components/Toast';
+import { formatCurrencyInput, parseCurrency } from '../utils/currencyFormatter';
 
 const { width } = Dimensions.get('window');
 
@@ -57,7 +59,17 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
   const totalSteps = 3;
 
   const updateFormData = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    if (field === 'assetValue') {
+      // Format currency as user types
+      const formatted = formatCurrencyInput(value);
+      setFormData(prev => ({ ...prev, [field]: formatted }));
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
+  };
+
+  const getAssetDisclaimer = (assetType: string): string => {
+    return 'Read more about asset class, please consult an attorney for further information';
   };
 
   const nextStep = async () => {
@@ -127,7 +139,7 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
         asset_name: formData.assetName.trim(),
         asset_type: formData.assetType as any,
         asset_description: formData.assetDescription.trim() || undefined,
-        asset_value: formData.assetValue ? parseFloat(formData.assetValue) : undefined,
+        asset_value: formData.assetValue ? parseCurrency(formData.assetValue) : undefined,
         asset_location: formData.assetLocation.trim() || undefined,
         is_active: true,
       });
@@ -223,6 +235,13 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
                 </TouchableOpacity>
               ))}
             </ScrollView>
+
+            {formData.assetType && (
+              <View style={styles.disclaimerBox}>
+                <Ionicons name="information-circle" size={20} color={theme.colors.info} />
+                <Text style={styles.disclaimerText}>{getAssetDisclaimer(formData.assetType)}</Text>
+              </View>
+            )}
 
             <TextInput
               style={styles.input}
@@ -504,6 +523,22 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.lg,
     fontWeight: theme.typography.weights.semibold as any,
     color: theme.colors.buttonText,
+  },
+  disclaimerBox: {
+    flexDirection: 'row',
+    backgroundColor: theme.colors.info + '15',
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    marginTop: theme.spacing.sm,
+    marginBottom: theme.spacing.md,
+    alignItems: 'center',
+  },
+  disclaimerText: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.text,
+    marginLeft: theme.spacing.sm,
+    flex: 1,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.xs,
   },
 });
 

@@ -19,6 +19,7 @@ import UserService from '../services/userService';
 import AssetService from '../services/assetService';
 import PolicyService from '../services/policyService';
 import BeneficiaryService from '../services/beneficiaryService';
+import WillService from '../services/willService';
 import { UserProfile } from '../types/user';
 
 interface DashboardScreenProps {
@@ -35,6 +36,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const [assetsCount, setAssetsCount] = useState(0);
   const [policiesCount, setPoliciesCount] = useState(0);
   const [beneficiariesCount, setBeneficiariesCount] = useState(0);
+  const [hasWill, setHasWill] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -66,6 +68,10 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       // Fetch beneficiaries count
       const beneficiaries = await BeneficiaryService.getUserBeneficiaries(currentUser.uid);
       setBeneficiariesCount(beneficiaries.length);
+
+      // Check if user has uploaded a will
+      const wills = await WillService.getUserWills(currentUser.uid);
+      setHasWill(wills.length > 0);
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     } finally {
@@ -158,36 +164,42 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         </View>
 
         {/* Navigation Tabs */}
-        <View style={styles.navTabs}>
-          <TouchableOpacity style={styles.navTab}>
-            <Ionicons name="home" size={28} color={theme.colors.primary} />
-            <Text style={styles.navTabNumber}>{assetsCount}</Text>
-          </TouchableOpacity>
+        <View style={styles.navTabsCard}>
+          <View style={styles.navTabs}>
+            <TouchableOpacity style={styles.navTab}>
+              <Ionicons name="document-text" size={28} color={theme.colors.primary} />
+              <Text style={styles.navTabNumber}>{assetsCount}</Text>
+            </TouchableOpacity>
 
-          <View style={styles.navTabCenter}>
-            {userProfile?.profile_picture_path ? (
-              <Image
-                source={{ uri: userProfile.profile_picture_path }}
-                style={styles.profilePicture}
-              />
-            ) : (
-              <View style={styles.centerCircle} />
-            )}
+            <View style={styles.navTabCenter}>
+              {userProfile?.profile_picture_path ? (
+                <Image
+                  source={{ uri: userProfile.profile_picture_path }}
+                  style={styles.profilePicture}
+                />
+              ) : (
+                <View style={styles.centerCircle} />
+              )}
+            </View>
+
+            <TouchableOpacity style={styles.navTab}>
+              <Ionicons name="people" size={28} color={theme.colors.primary} />
+              <Text style={styles.navTabNumber}>{beneficiariesCount}</Text>
+            </TouchableOpacity>
           </View>
+        </View>
 
-          <TouchableOpacity style={styles.navTab}>
-            <Ionicons name="people" size={28} color={theme.colors.primary} />
-            <Text style={styles.navTabNumber}>{beneficiariesCount}</Text>
-          </TouchableOpacity>
+        <View style={styles.assetsPoliciesPill}>
+          <Text style={styles.assetsPoliciesText}>Assets | Policies</Text>
         </View>
 
         {/* User Information */}
         <View style={styles.userInfo}>
-          <Text style={styles.infoLabel}>ID Number</Text>
-          <Text style={styles.infoValue}>{userProfile?.id_number || '-'}</Text>
-
           <Text style={styles.infoLabel}>Full Names</Text>
           <Text style={styles.infoValue}>{userProfile?.full_name || '-'}</Text>
+
+          <Text style={styles.infoLabel}>ID Number</Text>
+          <Text style={styles.infoValue}>{userProfile?.id_number || '-'}</Text>
 
           <Text style={styles.infoLabel}>Policy No.</Text>
           <Text style={styles.infoValue}>{userProfile?.policy_number || '-'}</Text>
@@ -217,10 +229,12 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
           <TouchableOpacity style={styles.actionButton} onPress={handleUploadWill}>
             <View style={styles.uploadWillButton}>
-              <Text style={styles.actionButtonText}>Upload Will</Text>
-              <View style={styles.urgentIndicator}>
-                <Text style={styles.urgentText}>!</Text>
-              </View>
+              <Text style={styles.actionButtonText}>{hasWill ? 'Edit Will' : 'Upload Will'}</Text>
+              {!hasWill && (
+                <View style={styles.urgentIndicator}>
+                  <Text style={styles.urgentText}>!</Text>
+                </View>
+              )}
             </View>
           </TouchableOpacity>
 
@@ -329,19 +343,22 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     fontWeight: theme.typography.weights.medium as any,
   },
+  navTabsCard: {
+    marginHorizontal: theme.spacing.lg,
+    marginTop: theme.spacing.lg,
+    padding: theme.spacing.xl,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xxl,
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowOffset: { width: 0, height: 18 },
+    shadowRadius: 28,
+    elevation: 14,
+  },
   navTabs: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    alignSelf: 'stretch',
-    marginHorizontal: theme.spacing.lg,
-    marginVertical: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.xxl,
-    paddingVertical: theme.spacing.xxl,
-    backgroundColor: theme.colors.background,
-    borderWidth: 2,
-    borderColor: theme.colors.primary,
-    borderRadius: theme.borderRadius.xl,
   },
   navTab: {
     alignItems: 'center',
@@ -366,6 +383,25 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
+  },
+  assetsPoliciesPill: {
+    alignSelf: 'stretch',
+    marginHorizontal: theme.spacing.lg,
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.xxl,
+    paddingVertical: theme.spacing.md,
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface,
+    alignItems: 'center',
+  },
+  assetsPoliciesText: {
+    fontSize: theme.typography.sizes.lg,
+    color: theme.colors.text,
+    fontWeight: theme.typography.weights.semibold as any,
+    letterSpacing: 0.6,
   },
   userInfo: {
     paddingHorizontal: theme.spacing.xxl,

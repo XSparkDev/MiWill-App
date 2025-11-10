@@ -177,6 +177,70 @@ export class BeneficiaryService {
   }
 
   /**
+   * Get beneficiaries linked to a specific asset
+   */
+  static async getBeneficiariesForAsset(assetId: string): Promise<BeneficiaryInformation[]> {
+    try {
+      const q = query(
+        collection(db, this.assetLinksCollection),
+        where('asset_id', '==', assetId)
+      );
+      const linkSnapshot = await getDocs(q);
+      
+      const beneficiaryIds = linkSnapshot.docs.map(doc => doc.data().beneficiary_id);
+      
+      if (beneficiaryIds.length === 0) {
+        return [];
+      }
+      
+      // Fetch beneficiaries
+      const beneficiaries: BeneficiaryInformation[] = [];
+      for (const beneficiaryId of beneficiaryIds) {
+        const beneficiary = await this.getBeneficiaryById(beneficiaryId);
+        if (beneficiary) {
+          beneficiaries.push(beneficiary);
+        }
+      }
+      
+      return beneficiaries;
+    } catch (error: any) {
+      throw new Error(`Failed to get beneficiaries for asset: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get beneficiaries linked to a specific policy
+   */
+  static async getBeneficiariesForPolicy(policyId: string): Promise<BeneficiaryInformation[]> {
+    try {
+      const q = query(
+        collection(db, this.policyLinksCollection),
+        where('policy_id', '==', policyId)
+      );
+      const linkSnapshot = await getDocs(q);
+      
+      const beneficiaryIds = linkSnapshot.docs.map(doc => doc.data().beneficiary_id);
+      
+      if (beneficiaryIds.length === 0) {
+        return [];
+      }
+      
+      // Fetch beneficiaries
+      const beneficiaries: BeneficiaryInformation[] = [];
+      for (const beneficiaryId of beneficiaryIds) {
+        const beneficiary = await this.getBeneficiaryById(beneficiaryId);
+        if (beneficiary) {
+          beneficiaries.push(beneficiary);
+        }
+      }
+      
+      return beneficiaries;
+    } catch (error: any) {
+      throw new Error(`Failed to get beneficiaries for policy: ${error.message}`);
+    }
+  }
+
+  /**
    * Map Firestore data to BeneficiaryInformation
    */
   private static mapFirestoreData(data: any): BeneficiaryInformation {

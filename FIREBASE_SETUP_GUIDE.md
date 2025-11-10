@@ -315,19 +315,26 @@ We'll create each collection one by one. In Firestore, you can create collection
 
 #### **Collection 5: `wills`**
 
-**Purpose**: Store will document information
+**Purpose**: Store digital versions of a user's will (documents, video statements, or audio wills)  
+**Note**: The application supports uploading **PDF/DOC documents, recorded videos, and recorded audio wills**.
 
 1. **Create Collection**: `wills`
 2. **Document Template Fields**:
    - `will_id`: string (Auto-ID)
    - `user_id`: string
-   - `will_title`: string
+   - `will_type`: string (Options: `document`, `video`, `audio`)
+   - `will_title`: string (optional)
    - `will_description`: string (optional)
-   - `will_document_url`: string (Firebase Storage URL)
-   - `will_document_name`: string
-   - `will_document_size`: number (bytes)
-   - `will_document_type`: string (MIME type, e.g., "application/pdf")
-   - `is_primary_will`: boolean (default: true)
+   - `document_path`: string (local path or Firebase Storage URL for PDF/DOC files)
+   - `video_path`: string (local path or storage URL for uploaded/recorded videos)
+   - `audio_path`: string (local path or storage URL for uploaded/recorded audio wills)
+   - `will_document_url`: string (optional - legacy field for Storage URL)
+   - `will_document_name`: string (optional)
+   - `will_document_size`: number (bytes, optional)
+   - `will_document_type`: string (MIME type: `application/pdf`, `video/mp4`, `audio/m4a`, etc.)
+   - `status`: string (Options: `active`, `inactive`, `archived`)
+   - `is_verified`: boolean (default: `false`)
+   - `is_primary_will`: boolean (default: `true`)
    - `last_updated`: timestamp
    - `created_at`: timestamp
    - `updated_at`: timestamp
@@ -384,13 +391,15 @@ We'll create each collection one by one. In Firestore, you can create collection
 
 #### **Collection 8: `beneficiaries`**
 
-**Purpose**: Store beneficiary information
+**Purpose**: Store beneficiary information (now tracking first name and surname separately)
 
 1. **Create Collection**: `beneficiaries`
 2. **Document Template Fields**:
    - `beneficiary_id`: string (Auto-ID)
    - `user_id`: string
-   - `beneficiary_name`: string
+   - `beneficiary_first_name`: string
+   - `beneficiary_surname`: string
+   - `beneficiary_name`: string (auto-generated full name for backward compatibility)
    - `beneficiary_email`: string (optional)
    - `beneficiary_phone`: string (optional)
    - `beneficiary_address`: string (optional)

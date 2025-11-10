@@ -37,14 +37,21 @@ export class WillService {
    */
   static async getUserWills(userId: string): Promise<WillInformation[]> {
     try {
+      // Query without orderBy to avoid requiring a composite index
       const q = query(
         collection(db, this.collection),
-        where('user_id', '==', userId),
-        orderBy('created_at', 'desc')
+        where('user_id', '==', userId)
       );
       const querySnapshot = await getDocs(q);
       
-      return querySnapshot.docs.map(doc => this.mapFirestoreData(doc.data()));
+      // Sort in memory instead
+      const wills = querySnapshot.docs.map(doc => this.mapFirestoreData(doc.data()));
+      
+      return wills.sort((a, b) => {
+        const dateA = a.created_at instanceof Date ? a.created_at : new Date(a.created_at);
+        const dateB = b.created_at instanceof Date ? b.created_at : new Date(b.created_at);
+        return dateB.getTime() - dateA.getTime(); // Descending order (newest first)
+      });
     } catch (error: any) {
       throw new Error(`Failed to get user wills: ${error.message}`);
     }

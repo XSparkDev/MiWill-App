@@ -164,7 +164,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
   // Auto-generate policy number on mount
   useEffect(() => {
     const generatePolicyNumber = () => {
-      const prefix = 'POL';
+      const prefix = 'POL-MW';
       const timestamp = Date.now().toString().slice(-8);
       const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
       return `${prefix}-${timestamp}-${random}`;

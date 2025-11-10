@@ -2,7 +2,7 @@
 export const theme = {
   colors: {
     // Primary teal colors from MiWill brand (darker shade)
-    primary: '#4A9A8A', // Darker teal
+    primary: '#5C9AAB', // Darker teal
     primaryDark: '#3A7A6A',
     primaryLight: '#5DBEAA',
     
@@ -29,12 +29,12 @@ export const theme = {
     borderLight: '#F0F3F7',
     
     // Input colors
-    inputBorder: '#4A9A8A',
+    inputBorder: '#5C9AAB',
     inputBackground: '#FFFFFF',
-    inputFocus: '#4A9A8A',
+    inputFocus: '#5C9AAB',
     
     // Button colors
-    buttonPrimary: '#4A9A8A',
+    buttonPrimary: '#5C9AAB',
     buttonPrimaryHover: '#3A7A6A',
     buttonSecondary: '#F0F3F7',
     buttonText: '#FFFFFF',
