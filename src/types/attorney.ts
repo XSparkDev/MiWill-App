@@ -1,6 +1,8 @@
 export interface AttorneyInformation {
   attorney_id: string;
   user_id: string;
+  attorney_first_name?: string;
+  attorney_surname?: string;
   attorney_name: string;
   attorney_email: string;
   attorney_phone: string;

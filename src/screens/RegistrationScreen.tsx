@@ -23,6 +23,7 @@ import UserService from '../services/userService';
 import AttorneyService from '../services/attorneyService';
 import ExecutorService from '../services/executorService';
 import SecondaryContactService from '../services/secondaryContactService';
+import { formatSAPhoneNumber, isValidSAPhoneNumber } from '../utils/phoneFormatter';
 
 const { width, height } = Dimensions.get('window');
 
@@ -33,7 +34,8 @@ interface RegistrationScreenProps {
 type StepData = {
   email: string;
   phone: string;
-  fullName: string;
+  firstName: string;
+  surname: string;
   idNumber: string;
   policyNumber: string;
   profilePicturePath: string;
@@ -41,24 +43,28 @@ type StepData = {
   customYears: string;
   customMonths: string;
   attorneySkipped: boolean;
-  attorneyName: string;
+  attorneyFirstName: string;
+  attorneySurname: string;
   attorneyEmail: string;
   attorneyPhone: string;
   attorneyFirm: string;
   attorneyAddress: string;
   executorSameAsAttorney: boolean;
-  executorName: string;
+  executorFirstName: string;
+  executorSurname: string;
   executorEmail: string;
   executorPhone: string;
   executorIdNumber: string;
   executorRelationship: string;
   executorAddress: string;
-  secondaryContactName: string;
+  secondaryContactFirstName: string;
+  secondaryContactSurname: string;
   secondaryContactEmail: string;
   secondaryContactPhone: string;
   secondaryContactRelationship: string;
   password: string;
   confirmPassword: string;
+  popiaAccepted: boolean;
 };
 
 const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) => {
@@ -69,7 +75,8 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
   const [formData, setFormData] = useState<StepData>({
     email: '',
     phone: '',
-    fullName: '',
+    firstName: '',
+    surname: '',
     idNumber: '',
     policyNumber: '',
     profilePicturePath: '',
@@ -77,24 +84,28 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     customYears: '1',
     customMonths: '0',
     attorneySkipped: false,
-    attorneyName: '',
+    attorneyFirstName: '',
+    attorneySurname: '',
     attorneyEmail: '',
     attorneyPhone: '',
     attorneyFirm: '',
     attorneyAddress: '',
     executorSameAsAttorney: false,
-    executorName: '',
+    executorFirstName: '',
+    executorSurname: '',
     executorEmail: '',
     executorPhone: '',
     executorIdNumber: '',
     executorRelationship: '',
     executorAddress: '',
-    secondaryContactName: '',
+    secondaryContactFirstName: '',
+    secondaryContactSurname: '',
     secondaryContactEmail: '',
     secondaryContactPhone: '',
     secondaryContactRelationship: '',
     password: '',
     confirmPassword: '',
+    popiaAccepted: false,
   });
 
   const totalSteps = 7;
@@ -108,6 +119,47 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/.test(pwd) && !/\s/.test(pwd);
 
   const [fieldError, setFieldError] = useState<string | null>(null);
+
+  // Check if current step has all required fields filled
+  const isStepValid = (): boolean => {
+    switch (currentStep) {
+      case 0: // Personal Information
+        return !!(
+          formData.firstName.trim() &&
+          formData.surname.trim() &&
+          formData.email.trim() &&
+          formData.password.trim() &&
+          formData.confirmPassword.trim() &&
+          formData.popiaAccepted
+        );
+      case 1: // Notification Frequency
+        return !!formData.notificationFrequency;
+      case 2: // Attorney (optional, always valid)
+        return true;
+      case 3: // Executor
+        return !!(
+          formData.executorFirstName.trim() &&
+          formData.executorSurname.trim() &&
+          formData.executorIdNumber.trim() &&
+          formData.executorRelationship.trim() &&
+          formData.executorEmail.trim() &&
+          formData.executorPhone.trim()
+        );
+      case 4: // Secondary Contact
+        return !!(
+          formData.secondaryContactFirstName.trim() &&
+          formData.secondaryContactSurname.trim() &&
+          formData.secondaryContactRelationship.trim() &&
+          formData.secondaryContactEmail.trim() &&
+          formData.secondaryContactPhone.trim()
+        );
+      case 5: // Review (always valid)
+      case 6: // Completion (always valid)
+        return true;
+      default:
+        return false;
+    }
+  };
 
   // Auto-generate policy number on mount
   useEffect(() => {
@@ -128,13 +180,23 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
   };
 
   const handleExecutorSameAsAttorney = () => {
-    if (!formData.attorneySkipped) {
-      updateFormData('executorSameAsAttorney', true);
-      updateFormData('executorName', formData.attorneyName);
-      updateFormData('executorEmail', formData.attorneyEmail);
-      updateFormData('executorPhone', formData.attorneyPhone);
-      updateFormData('executorAddress', formData.attorneyAddress);
+    if (formData.attorneySkipped) {
+      return;
     }
+
+    const firstName = (formData.attorneyFirstName || '').trim();
+    const surname = (formData.attorneySurname || '').trim();
+    const email = (formData.attorneyEmail || '').trim();
+    const phoneRaw = formData.attorneyPhone || '';
+    const phoneFormatted = phoneRaw ? formatSAPhoneNumber(phoneRaw) : '';
+    const address = (formData.attorneyAddress || '').trim();
+
+    updateFormData('executorSameAsAttorney', true);
+    updateFormData('executorFirstName', firstName);
+    updateFormData('executorSurname', surname);
+    updateFormData('executorEmail', email);
+    updateFormData('executorPhone', phoneFormatted);
+    updateFormData('executorAddress', address);
   };
 
   const pickProfileImage = async () => {
@@ -174,12 +236,24 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     if (currentStep < totalSteps - 1) {
       // Validate required fields on step 0 before moving on
       if (currentStep === 0) {
-        if (!formData.fullName.trim()) {
-          setFieldError('Please enter your full name.');
+        if (!formData.popiaAccepted) {
+          setFieldError('Please accept the POPIA Act terms to continue.');
+          return;
+        }
+        if (!formData.firstName.trim()) {
+          setFieldError('Please enter your first name.');
+          return;
+        }
+        if (!formData.surname.trim()) {
+          setFieldError('Please enter your surname.');
           return;
         }
         if (!isValidEmail(formData.email)) {
           setFieldError('Please enter a valid email address.');
+          return;
+        }
+        if (formData.phone && !isValidSAPhoneNumber(formData.phone)) {
+          setFieldError('Please enter a valid South African phone number.');
           return;
         }
         if (!isValidPassword(formData.password)) {
@@ -243,23 +317,31 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         custom_days = years * 365 + months * 30; // rough conversion
       }
 
-      // 3) Create user document
+      // 3) Create user document with formatted phone
+      const formattedPhone = formatSAPhoneNumber(formData.phone.trim());
       await UserService.createUser(uid, {
         email: formData.email.trim(),
-        phone: formData.phone.trim(),
-        full_name: formData.fullName.trim(),
+        phone: formattedPhone,
+        first_name: formData.firstName.trim(),
+        surname: formData.surname.trim(),
         id_number: formData.idNumber.trim(),
         policy_number: formData.policyNumber,
         profile_picture_path: formData.profilePicturePath || '',
         notification_frequency,
         custom_frequency_days: custom_days,
+        popia_accepted: formData.popiaAccepted,
       } as any);
 
       // 4) Create linked records
-      if (!formData.attorneySkipped && formData.attorneyName.trim()) {
+      if (
+        !formData.attorneySkipped &&
+        (formData.attorneyFirstName.trim() || formData.attorneySurname.trim())
+      ) {
         await AttorneyService.createAttorney({
           user_id: uid,
-          attorney_name: formData.attorneyName.trim(),
+          attorney_first_name: formData.attorneyFirstName.trim(),
+          attorney_surname: formData.attorneySurname.trim(),
+          attorney_name: `${formData.attorneyFirstName.trim()} ${formData.attorneySurname.trim()}`.trim(),
           attorney_email: formData.attorneyEmail.trim(),
           attorney_phone: formData.attorneyPhone.trim(),
           attorney_firm: formData.attorneyFirm?.trim() || '',
@@ -269,10 +351,12 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         });
       }
 
-      if (formData.executorName.trim()) {
+      if (formData.executorFirstName.trim() || formData.executorSurname.trim()) {
         await ExecutorService.createExecutor({
           user_id: uid,
-          executor_name: formData.executorName.trim(),
+          executor_first_name: formData.executorFirstName.trim(),
+          executor_surname: formData.executorSurname.trim(),
+          executor_name: `${formData.executorFirstName.trim()} ${formData.executorSurname.trim()}`.trim(),
           executor_email: formData.executorEmail.trim(),
           executor_phone: formData.executorPhone.trim(),
           executor_id_number: formData.executorIdNumber.trim(),
@@ -283,10 +367,12 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         } as any);
       }
 
-      if (formData.secondaryContactName.trim()) {
+      if (formData.secondaryContactFirstName.trim() || formData.secondaryContactSurname.trim()) {
         await SecondaryContactService.createSecondaryContact({
           user_id: uid,
-          contact_name: formData.secondaryContactName.trim(),
+          contact_first_name: formData.secondaryContactFirstName.trim(),
+          contact_surname: formData.secondaryContactSurname.trim(),
+          contact_name: `${formData.secondaryContactFirstName.trim()} ${formData.secondaryContactSurname.trim()}`.trim(),
           contact_email: formData.secondaryContactEmail.trim(),
           contact_phone: formData.secondaryContactPhone.trim(),
           relationship_to_user: formData.secondaryContactRelationship.trim(),
@@ -368,33 +454,26 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     );
   };
 
-  const renderCustomYearsMonthsOptions = () => {
-    const options = [];
-    for (let years = 1; years <= 5; years++) {
-      for (let months = 0; months <= 11; months++) {
-        const label = months === 0 
-          ? `${years} year${years > 1 ? 's' : ''}`
-          : `${years} year${years > 1 ? 's' : ''} and ${months} month${months > 1 ? 's' : ''}`;
-        options.push(
-          <TouchableOpacity
-            key={`${years}-${months}`}
-            style={[
-              styles.customYearOption,
-              formData.customYears === years.toString() && 
-              formData.customMonths === months.toString() && 
-              styles.customYearOptionActive,
-            ]}
-            onPress={() => {
-              updateFormData('customYears', years.toString());
-              updateFormData('customMonths', months.toString());
-            }}
-          >
-            <Text style={styles.customYearText}>{label}</Text>
-          </TouchableOpacity>
-        );
-      }
-    }
-    return options;
+  const renderCustomYearsOptions = () => {
+    return Array.from({ length: 5 }, (_, index) => {
+      const years = index + 1;
+      const isActive = formData.customYears === years.toString();
+      return (
+        <TouchableOpacity
+          key={`custom-year-${years}`}
+          style={[
+            styles.customYearOption,
+            isActive && styles.customYearOptionActive,
+          ]}
+          onPress={() => {
+            updateFormData('customYears', years.toString());
+            updateFormData('customMonths', '0');
+          }}
+        >
+          <Text style={styles.customYearText}>{`${years} year${years > 1 ? 's' : ''}`}</Text>
+        </TouchableOpacity>
+      );
+    });
   };
 
   const renderStep = () => {
@@ -407,6 +486,14 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
       case 0:
         return (
           <Animated.View style={[styles.stepContainer, animatedStyle]}>
+            <View style={styles.stepTopBar}>
+              <TouchableOpacity
+                style={styles.topBackButton}
+                onPress={() => navigation.goBack()}
+              >
+                <Text style={styles.topBackButtonText}>Back</Text>
+              </TouchableOpacity>
+            </View>
             <Text style={styles.stepTitle}>Welcome to MiWill</Text>
             <View style={styles.iconContainer}>
               <Ionicons name="person-circle-outline" size={60} color={theme.colors.primary} />
@@ -428,19 +515,26 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              style={styles.cancelLink}
-              onPress={() => navigation.goBack()}
-            >
-              <Text style={styles.cancelLinkText}>Cancel Registration</Text>
-            </TouchableOpacity>
+            {/* Policy Number Display (not editable) */}
+            <View style={styles.policyNumberDisplay}>
+              <Text style={styles.policyNumberLabel}>Your Policy Number:</Text>
+              <Text style={styles.policyNumberValue}>{formData.policyNumber}</Text>
+            </View>
 
             <TextInput
               style={styles.input}
-              placeholder="Full Name"
+              placeholder="First Name"
               placeholderTextColor={theme.colors.placeholder}
-              value={formData.fullName}
-              onChangeText={(value) => updateFormData('fullName', value)}
+              value={formData.firstName}
+              onChangeText={(value) => updateFormData('firstName', value)}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Surname"
+              placeholderTextColor={theme.colors.placeholder}
+              value={formData.surname}
+              onChangeText={(value) => updateFormData('surname', value)}
             />
 
             <TextInput
@@ -455,7 +549,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 
             <TextInput
               style={styles.input}
-              placeholder="Phone Number"
+              placeholder="Phone Number (e.g. 082 581 6642)"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.phone}
               onChangeText={(value) => updateFormData('phone', value)}
@@ -469,14 +563,6 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               value={formData.idNumber}
               onChangeText={(value) => updateFormData('idNumber', value)}
               keyboardType="numeric"
-            />
-
-            <TextInput
-              style={[styles.input, styles.inputDisabled]}
-              placeholder="Policy Number (Auto-generated)"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.policyNumber}
-              editable={false}
             />
 
             <TextInput
@@ -506,6 +592,21 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               textContentType="none"
               importantForAutofill="no"
             />
+
+            {/* POPIA Checkbox */}
+            <TouchableOpacity
+              style={styles.popiaContainer}
+              onPress={() => updateFormData('popiaAccepted', !formData.popiaAccepted)}
+            >
+              <View style={[styles.checkbox, formData.popiaAccepted && styles.checkboxChecked]}>
+                {formData.popiaAccepted && <Text style={styles.checkmark}>✓</Text>}
+              </View>
+              <Text style={styles.popiaText}>
+                I accept the{' '}
+                <Text style={styles.popiaLink}>POPIA Act</Text>
+                {' '}terms and conditions
+              </Text>
+            </TouchableOpacity>
 
             {fieldError ? (
               <Text style={styles.validationError}>{fieldError}</Text>
@@ -592,13 +693,13 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               onPress={() => updateFormData('notificationFrequency', 'custom_years')}
             >
               <Ionicons name="create-outline" size={32} color={theme.colors.primary} />
-              <Text style={styles.frequencyText}>Custom (1+ Years)</Text>
-              <Text style={styles.frequencySubtext}>Choose years and months</Text>
+              <Text style={styles.frequencyText}>Custom (1-5 Years)</Text>
+              <Text style={styles.frequencySubtext}>Choose number of years</Text>
             </TouchableOpacity>
 
             {formData.notificationFrequency === 'custom_years' && (
               <ScrollView style={styles.customYearsContainer} nestedScrollEnabled>
-                {renderCustomYearsMonthsOptions()}
+                {renderCustomYearsOptions()}
               </ScrollView>
             )}
           </Animated.View>
@@ -625,10 +726,18 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 
             <TextInput
               style={styles.input}
-              placeholder="Attorney Full Name"
+              placeholder="First Name"
               placeholderTextColor={theme.colors.placeholder}
-              value={formData.attorneyName}
-              onChangeText={(value) => updateFormData('attorneyName', value)}
+              value={formData.attorneyFirstName}
+              onChangeText={(value) => updateFormData('attorneyFirstName', value)}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Surname"
+              placeholderTextColor={theme.colors.placeholder}
+              value={formData.attorneySurname}
+              onChangeText={(value) => updateFormData('attorneySurname', value)}
             />
 
             <TextInput
@@ -689,15 +798,23 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 
             <TextInput
               style={styles.input}
-              placeholder="Executor Full Name"
+              placeholder="First Name"
               placeholderTextColor={theme.colors.placeholder}
-              value={formData.executorName}
-              onChangeText={(value) => updateFormData('executorName', value)}
+              value={formData.executorFirstName}
+              onChangeText={(value) => updateFormData('executorFirstName', value)}
             />
 
             <TextInput
               style={styles.input}
-              placeholder="Executor ID Number"
+              placeholder="Surname"
+              placeholderTextColor={theme.colors.placeholder}
+              value={formData.executorSurname}
+              onChangeText={(value) => updateFormData('executorSurname', value)}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="ID Number"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.executorIdNumber}
               onChangeText={(value) => updateFormData('executorIdNumber', value)}
@@ -714,7 +831,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 
             <TextInput
               style={styles.input}
-              placeholder="Executor Email"
+              placeholder="Email"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.executorEmail}
               onChangeText={(value) => updateFormData('executorEmail', value)}
@@ -724,7 +841,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 
             <TextInput
               style={styles.input}
-              placeholder="Executor Phone Number"
+              placeholder="Phone Number"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.executorPhone}
               onChangeText={(value) => updateFormData('executorPhone', value)}
@@ -733,7 +850,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 
             <TextInput
               style={styles.input}
-              placeholder="Executor Address (Optional)"
+              placeholder="Address (Optional)"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.executorAddress}
               onChangeText={(value) => updateFormData('executorAddress', value)}
@@ -755,10 +872,18 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 
             <TextInput
               style={styles.input}
-              placeholder="Contact Full Name"
+              placeholder="First Name"
               placeholderTextColor={theme.colors.placeholder}
-              value={formData.secondaryContactName}
-              onChangeText={(value) => updateFormData('secondaryContactName', value)}
+              value={formData.secondaryContactFirstName}
+              onChangeText={(value) => updateFormData('secondaryContactFirstName', value)}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Surname"
+              placeholderTextColor={theme.colors.placeholder}
+              value={formData.secondaryContactSurname}
+              onChangeText={(value) => updateFormData('secondaryContactSurname', value)}
             />
 
             <TextInput
@@ -802,7 +927,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             <ScrollView style={styles.reviewContainer} nestedScrollEnabled>
               <View style={styles.reviewSection}>
                 <Text style={styles.reviewSectionTitle}>Personal Information</Text>
-                <Text style={styles.reviewItem}>Name: {formData.fullName}</Text>
+                <Text style={styles.reviewItem}>Name: {formData.firstName} {formData.surname}</Text>
                 <Text style={styles.reviewItem}>Email: {formData.email}</Text>
                 <Text style={styles.reviewItem}>Phone: {formData.phone}</Text>
                 <Text style={styles.reviewItem}>ID: {formData.idNumber}</Text>
@@ -814,32 +939,63 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 <Text style={styles.reviewItem}>
                   Frequency: {formData.notificationFrequency}
                   {formData.notificationFrequency === 'custom_years' && 
-                    ` (${formData.customYears} year${parseInt(formData.customYears) > 1 ? 's' : ''} ${
-                      formData.customMonths !== '0' 
-                        ? `and ${formData.customMonths} month${parseInt(formData.customMonths) > 1 ? 's' : ''}` 
-                        : ''
-                    })`}
+                    ` (${formData.customYears} year${parseInt(formData.customYears) > 1 ? 's' : ''})`}
                 </Text>
               </View>
 
               {!formData.attorneySkipped && (
                 <View style={styles.reviewSection}>
                   <Text style={styles.reviewSectionTitle}>Attorney</Text>
-                  <Text style={styles.reviewItem}>Name: {formData.attorneyName}</Text>
-                  <Text style={styles.reviewItem}>Email: {formData.attorneyEmail}</Text>
+                  <Text style={styles.reviewItem}>
+                    Name: {`${formData.attorneyFirstName} ${formData.attorneySurname}`.trim()}
+                  </Text>
+                  {formData.attorneyEmail ? (
+                    <Text style={styles.reviewItem}>Email: {formData.attorneyEmail}</Text>
+                  ) : null}
+                  {formData.attorneyPhone ? (
+                    <Text style={styles.reviewItem}>Phone: {formData.attorneyPhone}</Text>
+                  ) : null}
+                  {formData.attorneyFirm ? (
+                    <Text style={styles.reviewItem}>Firm: {formData.attorneyFirm}</Text>
+                  ) : null}
+                  {formData.attorneyAddress ? (
+                    <Text style={styles.reviewItem}>Address: {formData.attorneyAddress}</Text>
+                  ) : null}
                 </View>
               )}
 
               <View style={styles.reviewSection}>
                 <Text style={styles.reviewSectionTitle}>Executor</Text>
-                <Text style={styles.reviewItem}>Name: {formData.executorName}</Text>
+                <Text style={styles.reviewItem}>
+                  Name: {`${formData.executorFirstName} ${formData.executorSurname}`.trim()}
+                </Text>
+                {formData.executorEmail ? (
+                  <Text style={styles.reviewItem}>Email: {formData.executorEmail}</Text>
+                ) : null}
+                {formData.executorPhone ? (
+                  <Text style={styles.reviewItem}>Phone: {formData.executorPhone}</Text>
+                ) : null}
+                {formData.executorIdNumber ? (
+                  <Text style={styles.reviewItem}>ID Number: {formData.executorIdNumber}</Text>
+                ) : null}
                 <Text style={styles.reviewItem}>Relationship: {formData.executorRelationship}</Text>
+                {formData.executorAddress ? (
+                  <Text style={styles.reviewItem}>Address: {formData.executorAddress}</Text>
+                ) : null}
               </View>
 
               <View style={styles.reviewSection}>
                 <Text style={styles.reviewSectionTitle}>Secondary Contact</Text>
-                <Text style={styles.reviewItem}>Name: {formData.secondaryContactName}</Text>
+                <Text style={styles.reviewItem}>
+                  Name: {`${formData.secondaryContactFirstName} ${formData.secondaryContactSurname}`.trim()}
+                </Text>
                 <Text style={styles.reviewItem}>Relationship: {formData.secondaryContactRelationship}</Text>
+                {formData.secondaryContactEmail ? (
+                  <Text style={styles.reviewItem}>Email: {formData.secondaryContactEmail}</Text>
+                ) : null}
+                {formData.secondaryContactPhone ? (
+                  <Text style={styles.reviewItem}>Phone: {formData.secondaryContactPhone}</Text>
+                ) : null}
               </View>
             </ScrollView>
           </Animated.View>
@@ -855,7 +1011,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 resizeMode="contain"
               />
               <View style={styles.iconContainer}>
-                <Ionicons name="checkmark-circle" size={80} color={theme.colors.success} />
+                <Ionicons name="checkmark-circle" size={80} color={theme.colors.primary} />
               </View>
               <Text style={styles.completionTitle}>All Set!</Text>
               <Text style={styles.completionText}>
@@ -892,10 +1048,18 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             )}
 
             <TouchableOpacity
-              style={[styles.nextButton, currentStep === 0 && styles.nextButtonFull]}
+              style={[
+                styles.nextButton,
+                currentStep === 0 && styles.nextButtonFull,
+                !isStepValid() && styles.nextButtonDisabled
+              ]}
               onPress={nextStep}
+              disabled={!isStepValid()}
             >
-              <Text style={styles.nextButtonText}>
+              <Text style={[
+                styles.nextButtonText,
+                !isStepValid() && styles.nextButtonTextDisabled
+              ]}>
                 {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
               </Text>
             </TouchableOpacity>
@@ -944,6 +1108,20 @@ const styles = StyleSheet.create({
   stepContainer: {
     flex: 1,
     minHeight: height * 0.55,
+  },
+  stepTopBar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    marginBottom: theme.spacing.sm,
+  },
+  topBackButton: {
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  topBackButtonText: {
+    color: theme.colors.primary,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.medium as any,
   },
   stepTitle: {
     fontSize: theme.typography.sizes.xxl,
@@ -1060,16 +1238,6 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.weights.medium as any,
     textDecorationLine: 'underline',
   },
-  cancelLink: {
-    alignSelf: 'center',
-    paddingVertical: theme.spacing.sm,
-    marginBottom: theme.spacing.lg,
-  },
-  cancelLinkText: {
-    fontSize: theme.typography.sizes.lg,
-    color: theme.colors.primary,
-    fontWeight: theme.typography.weights.bold as any,
-  },
   sameAsButton: {
     backgroundColor: theme.colors.surface,
     borderWidth: 2,
@@ -1171,6 +1339,72 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.lg,
     fontWeight: theme.typography.weights.semibold as any,
     color: theme.colors.buttonText,
+  },
+  nextButtonDisabled: {
+    backgroundColor: theme.colors.border,
+    opacity: 0.5,
+  },
+  nextButtonTextDisabled: {
+    color: theme.colors.textSecondary,
+  },
+  policyNumberDisplay: {
+    backgroundColor: theme.colors.surface,
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.xl,
+    padding: theme.spacing.lg,
+    marginBottom: theme.spacing.lg,
+    alignItems: 'center',
+  },
+  policyNumberLabel: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.xs,
+    fontWeight: theme.typography.weights.medium as any,
+  },
+  policyNumberValue: {
+    fontSize: theme.typography.sizes.xl,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.weights.bold as any,
+    letterSpacing: 1,
+  },
+  popiaContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.sm,
+    marginRight: theme.spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+  },
+  checkboxChecked: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  checkmark: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold' as any,
+  },
+  popiaText: {
+    flex: 1,
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+  },
+  popiaLink: {
+    color: theme.colors.primary,
+    fontWeight: theme.typography.weights.semibold as any,
+    textDecorationLine: 'underline',
   },
 });
 

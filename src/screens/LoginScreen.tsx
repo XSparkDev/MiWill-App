@@ -22,9 +22,41 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [popiaAccepted, setPopiaAccepted] = useState(false);
+
+  // Email validation regex
+  const isValidEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email.trim());
+  };
+
+  // Password validation regex (min 8, upper, lower, digit, special)
+  const isValidPassword = (pwd: string): boolean => {
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/;
+    return passwordRegex.test(pwd) && !/\s/.test(pwd);
+  };
 
   const handleLogin = async () => {
     setError(null);
+
+    // Validate POPIA acceptance
+    if (!popiaAccepted) {
+      setError('Please accept the POPIA terms to continue');
+      return;
+    }
+
+    // Validate email
+    if (!isValidEmail(email)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
+    // Validate password
+    if (!isValidPassword(password)) {
+      setError('Password must be 8+ characters with upper, lower, number and symbol');
+      return;
+    }
+
     setLoading(true);
     try {
       await AuthService.login(email.trim(), password);
@@ -96,6 +128,21 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
         {/* Error */}
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+        {/* POPIA Checkbox */}
+        <TouchableOpacity
+          style={styles.popiaContainer}
+          onPress={() => setPopiaAccepted(!popiaAccepted)}
+        >
+          <View style={[styles.checkbox, popiaAccepted && styles.checkboxChecked]}>
+            {popiaAccepted && <Text style={styles.checkmark}>✓</Text>}
+          </View>
+          <Text style={styles.popiaText}>
+            I accept the{' '}
+            <Text style={styles.popiaLink}>POPIA Act</Text>
+            {' '}terms and conditions
+          </Text>
+        </TouchableOpacity>
 
         {/* Login Button */}
         <TouchableOpacity
@@ -206,6 +253,43 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.sm,
     marginBottom: theme.spacing.sm,
     textAlign: 'center',
+  },
+  popiaContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.sm,
+    marginRight: theme.spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+  },
+  checkboxChecked: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  checkmark: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold' as any,
+  },
+  popiaText: {
+    flex: 1,
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+  },
+  popiaLink: {
+    color: theme.colors.primary,
+    fontWeight: theme.typography.weights.semibold as any,
+    textDecorationLine: 'underline',
   },
 });
 

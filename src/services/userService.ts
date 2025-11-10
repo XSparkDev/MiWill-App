@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { UserProfile, NotificationFrequency } from '../types/user';
+import { formatSAPhoneNumber } from '../utils/phoneFormatter';
 
 export class UserService {
   private static collection = 'users';
@@ -36,15 +37,22 @@ export class UserService {
    */
   static async createUser(userId: string, userData: Partial<UserProfile>): Promise<void> {
     try {
+      // Format phone number to +27 format
+      const formattedPhone = userData.phone ? formatSAPhoneNumber(userData.phone) : '';
+
       const userDoc: any = {
         user_id: userId,
         email: userData.email || '',
-        phone: userData.phone || '',
-        full_name: userData.full_name || '',
+        phone: formattedPhone,
+        first_name: userData.first_name || '',
+        surname: userData.surname || '',
+        full_name: userData.full_name || `${userData.first_name || ''} ${userData.surname || ''}`.trim(),
         id_number: userData.id_number || '',
         policy_number: userData.policy_number || '',
         profile_picture_path: (userData as any).profile_picture_path || '',
         notification_frequency: userData.notification_frequency || 'weekly',
+        popia_accepted: userData.popia_accepted || false,
+        popia_accepted_at: userData.popia_accepted ? Timestamp.now() : null,
         account_created: Timestamp.now(),
         last_seen: Timestamp.now(),
         email_verified: false,
@@ -80,6 +88,20 @@ export class UserService {
         ...cleanedUpdates,
         updated_at: Timestamp.now(),
       };
+
+      // Format phone number if being updated
+      if (updateData.phone) {
+        updateData.phone = formatSAPhoneNumber(updateData.phone);
+      }
+
+      // Auto-generate full_name if first_name or surname is being updated
+      if (updateData.first_name || updateData.surname) {
+        // Get existing user data to fill in missing parts
+        const existingUser = await this.getUserById(userId);
+        const firstName = updateData.first_name || existingUser?.first_name || '';
+        const surname = updateData.surname || existingUser?.surname || '';
+        updateData.full_name = `${firstName} ${surname}`.trim();
+      }
 
       // Convert Date objects to Timestamps
       if (updateData.last_seen && updateData.last_seen instanceof Date) {

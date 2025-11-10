@@ -1,6 +1,8 @@
 export interface SecondaryContactInformation {
   secondary_contact_id: string;
   user_id: string;
+  contact_first_name?: string;
+  contact_surname?: string;
   contact_name: string;
   contact_email?: string;
   contact_phone?: string;

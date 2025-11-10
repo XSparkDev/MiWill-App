@@ -129,78 +129,103 @@ We'll create each collection one by one. In Firestore, you can create collection
      **Field 3**: `phone`
      - Field: `phone`
      - Type: `string`
-     - Value: `+1234567890`
+     - Value: `+27825816642` (South African format with +27 prefix)
+     - Note: Phone numbers are automatically formatted to +27 format
 
-     **Field 4**: `full_name`
+     **Field 4**: `first_name`
+     - Field: `first_name`
+     - Type: `string`
+     - Value: `John`
+
+     **Field 5**: `surname`
+     - Field: `surname`
+     - Type: `string`
+     - Value: `Doe`
+
+     **Field 6**: `full_name`
      - Field: `full_name`
      - Type: `string`
      - Value: `John Doe`
+     - Note: Auto-generated from first_name + surname, kept for backward compatibility
 
-     **Field 5**: `id_number`
+     **Field 7**: `id_number`
      - Field: `id_number`
      - Type: `string`
      - Value: `1234567890123`
 
-     **Field 6**: `policy_number`
+     **Field 8**: `policy_number`
      - Field: `policy_number`
      - Type: `string`
      - Value: `POL-001-2024`
 
-    **Field 7**: `profile_picture_path`
+    **Field 9**: `profile_picture_path`
     - Field: `profile_picture_path`
     - Type: `string`
     - Value: `/Users/[your-username]/Desktop/MiWill-App/storage/profile_pictures/[user_id]/profile.jpg` (local file path)
     - Note: We are using local storage for now. Keep profile images under `MiWill-App/storage/profile_pictures/[user_id]/`. When migrating to Firebase Storage, you can add a separate `profile_picture_url` field to store the HTTPS URL.
 
-     **Field 8**: `notification_frequency`
+     **Field 10**: `notification_frequency`
      - Field: `notification_frequency`
      - Type: `string`
      - Value: `weekly` (Options: daily, weekly, monthly, quarterly, custom_days)
 
-     **Field 9**: `custom_frequency_days`
+     **Field 11**: `custom_frequency_days`
      - Field: `custom_frequency_days`
      - Type: `number`
      - Value: `7` (only if notification_frequency is "custom_days")
 
-     **Field 10**: `account_created`
+     **Field 12**: `popia_accepted`
+     - Field: `popia_accepted`
+     - Type: `boolean`
+     - Value: `true` or `false`
+     - Note: Indicates whether user accepted POPIA Act terms
+
+     **Field 13**: `popia_accepted_at`
+     - Field: `popia_accepted_at`
+     - Type: `timestamp`
+     - Value: Timestamp when POPIA was accepted (null if not accepted)
+
+     **Field 14**: `account_created`
      - Field: `account_created`
      - Type: `timestamp`
      - Value: Click timestamp icon, select current date/time
 
-     **Field 11**: `last_seen`
+     **Field 15**: `last_seen`
      - Field: `last_seen`
      - Type: `timestamp`
      - Value: Current date/time
 
-     **Field 12**: `email_verified`
+     **Field 16**: `email_verified`
      - Field: `email_verified`
      - Type: `boolean`
      - Value: `false`
 
-     **Field 13**: `phone_verified`
+     **Field 17**: `phone_verified`
      - Field: `phone_verified`
      - Type: `boolean`
      - Value: `false`
 
-     **Field 14**: `is_active`
+     **Field 18**: `is_active`
      - Field: `is_active`
      - Type: `boolean`
      - Value: `true`
 
-     **Field 15**: `onboarding_completed`
+     **Field 19**: `onboarding_completed`
      - Field: `onboarding_completed`
      - Type: `boolean`
      - Value: `false`
 
-     **Field 16**: `created_at`
+     **Field 20**: `created_at`
      - Field: `created_at`
      - Type: `timestamp`
      - Value: Current date/time
 
-     **Field 17**: `updated_at`
+     **Field 21**: `updated_at`
      - Field: `updated_at`
      - Type: `timestamp`
      - Value: Current date/time
+
+**Total Fields: 21** (19 required fields + 2 new POPIA fields)
 
 4. **Save Document**:
    - Click "Save"
@@ -223,7 +248,9 @@ We'll create each collection one by one. In Firestore, you can create collection
      
      - `attorney_id`: string (Auto-generated UUID)
      - `user_id`: string (Reference to user)
-     - `attorney_name`: string
+    - `attorney_first_name`: string
+    - `attorney_surname`: string
+    - `attorney_name`: string (auto-generated full name)
      - `attorney_email`: string
      - `attorney_phone`: string
      - `attorney_firm`: string (optional)
@@ -245,6 +272,8 @@ We'll create each collection one by one. In Firestore, you can create collection
 2. **Document Template Fields**:
    - `executor_id`: string (Auto-ID)
    - `user_id`: string
+   - `executor_first_name`: string
+   - `executor_surname`: string
    - `executor_name`: string
    - `executor_email`: string
    - `executor_phone`: string
@@ -268,7 +297,9 @@ We'll create each collection one by one. In Firestore, you can create collection
 2. **Document Template Fields**:
    - `secondary_contact_id`: string (Auto-ID)
    - `user_id`: string
-   - `contact_name`: string
+    - `contact_first_name`: string
+    - `contact_surname`: string
+    - `contact_name`: string (auto-generated full name)
    - `contact_email`: string
    - `contact_phone`: string
    - `relationship_to_user`: string

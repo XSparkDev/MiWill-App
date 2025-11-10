@@ -1,6 +1,8 @@
 export interface ExecutorInformation {
   executor_id: string;
   user_id: string;
+  executor_first_name?: string;
+  executor_surname?: string;
   executor_name: string;
   executor_email: string;
   executor_phone: string;
