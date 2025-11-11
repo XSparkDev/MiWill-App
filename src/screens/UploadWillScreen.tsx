@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,16 @@ import * as FileSystem from 'expo-file-system';
 import { theme } from '../config/theme.config';
 import { useAuth } from '../contexts/AuthContext';
 import WillService from '../services/willService';
+import { WillInformation } from '../types/will';
+let WebView: any = null;
+try {
+  // Lazily require so native dependency isn't mandatory in all environments
+  // eslint-disable-next-line global-require
+  const webviewModule = require('react-native-webview');
+  WebView = webviewModule.WebView || webviewModule.default;
+} catch (error) {
+  WebView = null;
+}
 
 interface UploadWillScreenProps {
   navigation: any;
@@ -38,26 +48,29 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [hasExistingWill, setHasExistingWill] = useState(false);
+  const [existingWills, setExistingWills] = useState<WillInformation[]>([]);
   const [aiAssistantVisible, setAiAssistantVisible] = useState(false);
   const [aiSections, setAiSections] = useState<AiEditorSection[]>([]);
   const [aiCurrentStep, setAiCurrentStep] = useState(0);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiDraftUri, setAiDraftUri] = useState<string | null>(null);
+  const [previewWill, setPreviewWill] = useState<WillInformation | null>(null);
 
-  // Check for existing will on mount
-  useEffect(() => {
-    const checkExistingWill = async () => {
-      if (!currentUser) return;
-      try {
-        const wills = await WillService.getUserWills(currentUser.uid);
-        setHasExistingWill(wills.length > 0);
-      } catch (error) {
-        console.error('Error checking existing will:', error);
-      }
-    };
-    checkExistingWill();
+  const loadExistingWills = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const wills = await WillService.getUserWills(currentUser.uid);
+      setExistingWills(wills);
+      setHasExistingWill(wills.length > 0);
+    } catch (error) {
+      console.error('Error loading existing wills:', error);
+    }
   }, [currentUser]);
+
+  useEffect(() => {
+    loadExistingWills();
+  }, [loadExistingWills]);
 
   const defaultAiSections: AiEditorSection[] = [
     {
@@ -194,6 +207,118 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       Alert.alert('Error', 'Failed to save the AI-assisted will draft.');
     }
   };
+
+  const getWillDisplayName = (will: WillInformation) => {
+    if (will.will_document_name) return will.will_document_name;
+    const path =
+      will.document_path || will.video_path || will.audio_path || will.will_document_url;
+    if (!path) return 'Untitled Will';
+    const parts = path.split('/');
+    return parts[parts.length - 1] || 'Untitled Will';
+  };
+
+  const getWillSourcePath = (will: WillInformation) => {
+    if (will.document_path) return will.document_path;
+    if (will.video_path) return will.video_path;
+    if (will.audio_path) return will.audio_path;
+    if (will.will_document_url) return will.will_document_url;
+    return null;
+  };
+
+  const handleOpenExistingWill = (will: WillInformation) => {
+    const path = getWillSourcePath(will);
+    if (!path) {
+      Alert.alert('Unavailable', 'No viewable path is stored for this will.');
+      return;
+    }
+    if (!WebView) {
+      Alert.alert(
+        'Preview Unavailable',
+        'Web preview is not supported in this build. Please open the file from the dashboard or download it.'
+      );
+      return;
+    }
+    setPreviewWill(will);
+  };
+
+  const getWillTypeIcon = (will: WillInformation) => {
+    switch (will.will_type) {
+      case 'video':
+        return 'videocam-outline';
+      case 'audio':
+        return 'musical-notes-outline';
+      default:
+        return 'document-text-outline';
+    }
+  };
+
+  const formatTimestamp = (value: Date | string | undefined) => {
+    if (!value) return 'Unknown';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Unknown';
+    return date.toLocaleString();
+  };
+
+  const handleDeleteExistingWill = (will: WillInformation) => {
+    Alert.alert(
+      'Delete Will',
+      'Are you sure you want to permanently delete this will?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await WillService.deleteWill(will.will_id);
+              setExistingWills(prev => {
+                const next = prev.filter(item => item.will_id !== will.will_id);
+                setHasExistingWill(next.length > 0);
+                return next;
+              });
+              Alert.alert('Deleted', 'Will removed successfully.');
+            } catch (error) {
+              console.error('Error deleting will:', error);
+              Alert.alert('Error', 'Failed to delete the selected will.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const renderExistingWillCard = (will: WillInformation) => (
+    <View key={will.will_id} style={styles.existingWillCard}>
+      <View style={styles.existingWillIcon}>
+        <Ionicons name={getWillTypeIcon(will)} size={28} color={theme.colors.primary} />
+      </View>
+      <View style={styles.existingWillInfo}>
+        <Text style={styles.existingWillName}>{getWillDisplayName(will)}</Text>
+        <Text style={styles.existingWillMeta}>
+          Type: {will.will_type.charAt(0).toUpperCase() + will.will_type.slice(1)}
+        </Text>
+        <Text style={styles.existingWillMeta}>
+          Updated: {formatTimestamp(will.last_updated)}
+        </Text>
+      </View>
+      <View style={styles.existingWillActions}>
+          <TouchableOpacity
+            style={styles.existingWillActionButton}
+            onPress={() => handleOpenExistingWill(will)}
+          >
+            <Ionicons name="open-outline" size={20} color={theme.colors.buttonText} />
+            <Text style={styles.existingWillActionText}>Preview</Text>
+          </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.existingWillActionButton, styles.existingWillDeleteButton]}
+          onPress={() => handleDeleteExistingWill(will)}
+        >
+          <Ionicons name="trash-outline" size={20} color={theme.colors.buttonText} />
+          <Text style={styles.existingWillActionText}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   const pickDocument = async () => {
     try {
@@ -350,7 +475,12 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
           last_updated: new Date(),
         });
         Alert.alert('Success', 'Will document uploaded successfully');
-        navigation.goBack();
+        await loadExistingWills();
+        setSelectedFile(null);
+        setSelectedVideo(null);
+        setSelectedAudio(null);
+        setUploadType(null);
+        setAiDraftUri(null);
       } else if (uploadType === 'video' && selectedVideo) {
         // TODO: Upload video to Firebase Storage
         await WillService.createWill({
@@ -362,7 +492,12 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
           last_updated: new Date(),
         });
         Alert.alert('Success', 'Will video uploaded successfully');
-        navigation.goBack();
+        await loadExistingWills();
+        setSelectedVideo(null);
+        setSelectedFile(null);
+        setSelectedAudio(null);
+        setUploadType(null);
+        setAiDraftUri(null);
       } else if (uploadType === 'audio' && selectedAudio) {
         // TODO: Upload audio to Firebase Storage
         await WillService.createWill({
@@ -374,7 +509,12 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
           last_updated: new Date(),
         });
         Alert.alert('Success', 'Will audio uploaded successfully');
-        navigation.goBack();
+        await loadExistingWills();
+        setSelectedAudio(null);
+        setSelectedFile(null);
+        setSelectedVideo(null);
+        setUploadType(null);
+        setAiDraftUri(null);
       } else {
         Alert.alert('Error', 'Please select a file, video, or audio');
       }
@@ -383,21 +523,20 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
     }
   };
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Upload Will</Text>
-          <View style={{ width: 24 }} />
-        </View>
+  const renderMainContent = () => (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Upload Will</Text>
+        <View style={{ width: 24 }} />
+      </View>
 
-        <ScrollView
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
           <Text style={styles.title}>How would you like to upload your will?</Text>
           <View style={styles.iconContainer}>
             <Ionicons name="document-text-outline" size={60} color={theme.colors.primary} />
@@ -405,6 +544,15 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
           <Text style={styles.subtitle}>
             You can upload a document, record video or audio explaining your will
           </Text>
+
+          {existingWills.length > 0 && (
+            <View style={styles.existingWillSection}>
+              <Text style={styles.existingWillSectionTitle}>
+                {existingWills.length > 1 ? 'Existing Wills' : 'Current Will'}
+              </Text>
+              {existingWills.map(renderExistingWillCard)}
+            </View>
+          )}
 
           <TouchableOpacity style={[styles.optionButton, styles.aiOptionButton]} onPress={openAiAssistant}>
             <View style={styles.aiBadge}>
@@ -486,23 +634,28 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
               </Text>
             </View>
           )}
-        </ScrollView>
+      </ScrollView>
 
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={[
-              styles.saveButton,
-              (!selectedFile && !selectedVideo && !selectedAudio) && styles.saveButtonDisabled,
-            ]}
-            onPress={handleSave}
-            disabled={!selectedFile && !selectedVideo && !selectedAudio || isRecording}
-          >
-            <Text style={styles.saveButtonText}>
-              {hasExistingWill ? 'Update Will' : 'Upload Will'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={[
+            styles.saveButton,
+            (!selectedFile && !selectedVideo && !selectedAudio) && styles.saveButtonDisabled,
+          ]}
+          onPress={handleSave}
+          disabled={!selectedFile && !selectedVideo && !selectedAudio || isRecording}
+        >
+          <Text style={styles.saveButtonText}>
+            {hasExistingWill ? 'Update Will' : 'Upload Will'}
+          </Text>
+        </TouchableOpacity>
       </View>
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      {renderMainContent()}
 
       <Modal
         animationType="fade"
@@ -596,6 +749,41 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
           </View>
         </View>
       </Modal>
+
+      {WebView && (
+        <Modal
+          visible={!!previewWill}
+          animationType="slide"
+          onRequestClose={() => setPreviewWill(null)}
+        >
+          <SafeAreaView style={styles.previewContainer}>
+            <View style={styles.previewHeader}>
+              <TouchableOpacity
+                onPress={() => setPreviewWill(null)}
+                style={styles.previewCloseButton}
+              >
+                <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+              <Text style={styles.previewTitle}>
+                {previewWill ? getWillDisplayName(previewWill) : 'Preview'}
+              </Text>
+              <View style={{ width: 24 }} />
+            </View>
+            {previewWill && (
+              <WebView
+                source={{ uri: getWillSourcePath(previewWill) || '' }}
+                style={styles.previewWebView}
+                startInLoadingState
+                renderLoading={() => (
+                  <View style={styles.previewLoading}>
+                    <ActivityIndicator size="large" color={theme.colors.primary} />
+                  </View>
+                )}
+              />
+            )}
+          </SafeAreaView>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 };
@@ -688,6 +876,78 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.textSecondary,
     textAlign: 'center',
+  },
+  existingWillSection: {
+    width: '100%',
+    marginBottom: theme.spacing.xl,
+    padding: theme.spacing.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.xl,
+    backgroundColor: theme.colors.background,
+  },
+  existingWillSectionTitle: {
+    fontSize: theme.typography.sizes.lg,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
+  },
+  existingWillCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    backgroundColor: theme.colors.surface,
+  },
+  existingWillIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: theme.colors.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: theme.spacing.md,
+  },
+  existingWillInfo: {
+    flex: 1,
+  },
+  existingWillName: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.text,
+    fontWeight: theme.typography.weights.semibold as any,
+    marginBottom: theme.spacing.xs / 1.5,
+  },
+  existingWillMeta: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.xs / 1.5,
+  },
+  existingWillActions: {
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    marginLeft: theme.spacing.md,
+    gap: theme.spacing.xs,
+  },
+  existingWillActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.buttonPrimary,
+    borderRadius: theme.borderRadius.lg,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+  },
+  existingWillDeleteButton: {
+    backgroundColor: theme.colors.error,
+  },
+  existingWillActionText: {
+    color: theme.colors.buttonText,
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+    marginLeft: theme.spacing.xs / 1.2,
   },
   selectedFile: {
     fontSize: theme.typography.sizes.sm,
@@ -863,6 +1123,40 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.semibold as any,
     color: theme.colors.buttonText,
+  },
+  previewContainer: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.xl,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  previewCloseButton: {
+    padding: theme.spacing.xs,
+  },
+  previewTitle: {
+    fontSize: theme.typography.sizes.lg,
+    color: theme.colors.text,
+    fontWeight: theme.typography.weights.semibold as any,
+    flex: 1,
+    textAlign: 'center',
+  },
+  previewWebView: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  previewLoading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: theme.colors.background,
   },
 });
 
