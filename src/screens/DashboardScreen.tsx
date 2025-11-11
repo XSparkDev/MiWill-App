@@ -570,14 +570,14 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             resizeMode="contain"
           />
           <View style={styles.headerButtons}>
+            <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+              <Text style={styles.logoutText}>Logout</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setShowSideMenu(true)}
               style={styles.menuButton}
             >
               <Ionicons name="menu" size={24} color={theme.colors.text} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-              <Text style={styles.logoutText}>Logout</Text>
             </TouchableOpacity>
           </View>
         </View>

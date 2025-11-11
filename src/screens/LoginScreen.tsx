@@ -9,6 +9,7 @@ import {
   Platform,
   ScrollView,
   Image,
+  Modal,
 } from 'react-native';
 import { theme } from '../config/theme.config';
 import AuthService from '../services/authService';
@@ -23,6 +24,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [popiaAccepted, setPopiaAccepted] = useState(false);
+  const [showPopiaModal, setShowPopiaModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   // Email validation regex
   const isValidEmail = (email: string): boolean => {
@@ -41,7 +44,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
     // Validate POPIA acceptance
     if (!popiaAccepted) {
-      setError('Please accept the POPIA terms to continue');
+      setError('Please accept the POPIA Act and Terms of Use to continue');
       return;
     }
 
@@ -130,19 +133,28 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         {/* POPIA Checkbox */}
-        <TouchableOpacity
-          style={styles.popiaContainer}
-          onPress={() => setPopiaAccepted(!popiaAccepted)}
-        >
-          <View style={[styles.checkbox, popiaAccepted && styles.checkboxChecked]}>
-            {popiaAccepted && <Text style={styles.checkmark}>✓</Text>}
-          </View>
+        <View style={styles.popiaContainer}>
+          <TouchableOpacity
+            onPress={() => setPopiaAccepted(!popiaAccepted)}
+            style={styles.checkboxWrapper}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: popiaAccepted }}
+          >
+            <View style={[styles.checkbox, popiaAccepted && styles.checkboxChecked]}>
+              {popiaAccepted && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+          </TouchableOpacity>
           <Text style={styles.popiaText}>
             I accept the{' '}
-            <Text style={styles.popiaLink}>POPIA Act</Text>
-            {' '}terms and conditions
+            <Text style={styles.popiaLink} onPress={() => setShowPopiaModal(true)}>
+              POPIA Act
+            </Text>
+            {' '}terms and conditions and{' '}
+            <Text style={styles.popiaLink} onPress={() => setShowTermsModal(true)}>
+              Terms of Use
+            </Text>
           </Text>
-        </TouchableOpacity>
+        </View>
 
         {/* Login Button */}
         <TouchableOpacity
@@ -166,6 +178,93 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           <Text style={styles.resetPasswordLink}>Reset Password</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* POPIA Modal */}
+      <Modal
+        visible={showPopiaModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowPopiaModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>POPIA Act Consent</Text>
+            <ScrollView style={styles.modalScroll}>
+              <Text style={styles.modalBody}>
+                The Protection of Personal Information Act (POPIA) governs how MiWill collects,
+                stores, and processes your personal data. By proceeding, you acknowledge that:
+                {'\n\n'}
+                • Your personal details, executor and beneficiary information are collected
+                solely for estate-planning purposes.
+                {'\n'}
+                • We store this information securely and only share it with authorised parties
+                such as attorneys, executors, or trusted contacts you nominate.
+                {'\n'}
+                • You may request access to, correction of, or deletion of your personal
+                information at any time via the MiWill support team.
+                {'\n'}
+                • We comply with South African data protection standards and will notify you
+                of any material changes to how your data is handled.
+                {'\n\n'}
+                Accepting the POPIA terms allows us to provide secure succession planning
+                services tailored to South African legal requirements.
+              </Text>
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowPopiaModal(false)}
+            >
+              <Text style={styles.modalCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Terms of Use Modal */}
+      <Modal
+        visible={showTermsModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowTermsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>MiWill Terms of Use</Text>
+            <ScrollView style={styles.modalScroll}>
+              <Text style={styles.modalBody}>
+                These Terms of Use outline the conditions under which you may use the MiWill
+                application in South Africa:
+                {'\n\n'}
+                • MiWill assists with drafting, managing, and storing wills, assets, policies,
+                and beneficiary records. It does not replace professional legal advice.
+                {'\n'}
+                • You are responsible for ensuring the accuracy of all information provided and
+                for keeping your login credentials secure.
+                {'\n'}
+                • Uploaded documents and recordings remain your property. By using MiWill you
+                grant us permission to store them securely and make them available to authorised
+                parties for estate administration.
+                {'\n'}
+                • MiWill complies with South African estate planning regulations; however,
+                final validation of wills may require witnessing and legal execution outside
+                the app.
+                {'\n'}
+                • Misuse of the service, fraudulent data, or unauthorised access is prohibited
+                and may lead to suspension or legal action.
+                {'\n\n'}
+                Continuing indicates that you understand these conditions and agree to use
+                MiWill responsibly within South African legal frameworks.
+              </Text>
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowTermsModal(false)}
+            >
+              <Text style={styles.modalCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -260,6 +359,9 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.lg,
     paddingHorizontal: theme.spacing.sm,
   },
+  checkboxWrapper: {
+    marginRight: theme.spacing.sm,
+  },
   checkbox: {
     width: 24,
     height: 24,
@@ -290,6 +392,47 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: theme.typography.weights.semibold as any,
     textDecorationLine: 'underline',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.spacing.xl,
+  },
+  modalContent: {
+    width: '100%',
+    maxHeight: '80%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xxl,
+    padding: theme.spacing.xl,
+  },
+  modalTitle: {
+    fontSize: theme.typography.sizes.xl,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
+  },
+  modalScroll: {
+    maxHeight: 320,
+    marginBottom: theme.spacing.lg,
+  },
+  modalBody: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+  },
+  modalCloseButton: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+    backgroundColor: theme.colors.buttonPrimary,
+    borderRadius: theme.borderRadius.lg,
+  },
+  modalCloseText: {
+    color: theme.colors.buttonText,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
   },
 });
 

@@ -14,6 +14,7 @@ import {
   SafeAreaView,
   Alert,
   Linking,
+  Modal,
 } from 'react-native';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
@@ -119,6 +120,8 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$/.test(pwd) && !/\s/.test(pwd);
 
   const [fieldError, setFieldError] = useState<string | null>(null);
+  const [showPopiaModal, setShowPopiaModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   // Check if current step has all required fields filled
   const isStepValid = (): boolean => {
@@ -237,7 +240,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
       // Validate required fields on step 0 before moving on
       if (currentStep === 0) {
         if (!formData.popiaAccepted) {
-          setFieldError('Please accept the POPIA Act terms to continue.');
+          setFieldError('Please accept the POPIA Act and Terms of Use to continue.');
           return;
         }
         if (!formData.firstName.trim()) {
@@ -594,19 +597,28 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             />
 
             {/* POPIA Checkbox */}
-            <TouchableOpacity
-              style={styles.popiaContainer}
-              onPress={() => updateFormData('popiaAccepted', !formData.popiaAccepted)}
-            >
-              <View style={[styles.checkbox, formData.popiaAccepted && styles.checkboxChecked]}>
-                {formData.popiaAccepted && <Text style={styles.checkmark}>✓</Text>}
-              </View>
+            <View style={styles.popiaContainer}>
+              <TouchableOpacity
+                onPress={() => updateFormData('popiaAccepted', !formData.popiaAccepted)}
+                style={styles.checkboxWrapper}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: formData.popiaAccepted }}
+              >
+                <View style={[styles.checkbox, formData.popiaAccepted && styles.checkboxChecked]}>
+                  {formData.popiaAccepted && <Text style={styles.checkmark}>✓</Text>}
+                </View>
+              </TouchableOpacity>
               <Text style={styles.popiaText}>
                 I accept the{' '}
-                <Text style={styles.popiaLink}>POPIA Act</Text>
-                {' '}terms and conditions
+                <Text style={styles.popiaLink} onPress={() => setShowPopiaModal(true)}>
+                  POPIA Act
+                </Text>
+                {' '}terms and conditions and{' '}
+                <Text style={styles.popiaLink} onPress={() => setShowTermsModal(true)}>
+                  Terms of Use
+                </Text>
               </Text>
-            </TouchableOpacity>
+            </View>
 
             {fieldError ? (
               <Text style={styles.validationError}>{fieldError}</Text>
@@ -1066,6 +1078,94 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* POPIA Modal */}
+      <Modal
+        visible={showPopiaModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowPopiaModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>POPIA Act Consent</Text>
+            <ScrollView style={styles.modalScroll}>
+              <Text style={styles.modalBody}>
+                The Protection of Personal Information Act (POPIA) regulates how MiWill handles
+                your personal information. By accepting these terms you consent to MiWill:
+                {'\n\n'}
+                • Collecting personal, beneficiary, executor, and attorney details strictly for
+                succession planning purposes.
+                {'\n'}
+                • Storing this information securely within South Africa and limiting access to
+                authorised parties that you nominate, such as executors and trusted contacts.
+                {'\n'}
+                • Using your data to deliver estate-related notifications, proof-of-life checks,
+                and legal documentation storage services.
+                {'\n'}
+                • Providing you with the right to request access, rectification, or deletion of
+                your information in line with POPIA requirements.
+                {'\n\n'}
+                MiWill is committed to transparency and will notify you of any changes to how
+                your personal information is processed. Your consent enables us to offer a
+                compliant, secure digital estate management experience tailored for South Africans.
+              </Text>
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowPopiaModal(false)}
+            >
+              <Text style={styles.modalCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Terms of Use Modal */}
+      <Modal
+        visible={showTermsModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowTermsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>MiWill Terms of Use</Text>
+            <ScrollView style={styles.modalScroll}>
+              <Text style={styles.modalBody}>
+                These Terms of Use explain the conditions for using MiWill within South Africa:
+                {'\n\n'}
+                • MiWill provides tools to capture wills, assets, policies, and beneficiary details.
+                It does not replace legal advice. You remain responsible for ensuring your will
+                meets statutory witnessing and execution requirements.
+                {'\n'}
+                • All information submitted must be truthful and accurate. You agree to keep your
+                login credentials private and to notify MiWill immediately if you suspect
+                unauthorised access.
+                {'\n'}
+                • Uploaded documents, audio, or video files remain your property. You permit MiWill
+                to store and process them to support estate administration and share them with
+                authorised parties you select.
+                {'\n'}
+                • MiWill adheres to South African data and estate regulations but cannot guarantee
+                the enforceability of documents that are not witnessed or executed according to law.
+                {'\n'}
+                • Any misuse of the platform, fraudulent activity, or violation of these terms may
+                result in suspension and possible legal action.
+                {'\n\n'}
+                By continuing you acknowledge that you understand these obligations and agree to use
+                MiWill responsibly to manage your estate affairs.
+              </Text>
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowTermsModal(false)}
+            >
+              <Text style={styles.modalCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1375,6 +1475,9 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.lg,
     paddingHorizontal: theme.spacing.sm,
   },
+  checkboxWrapper: {
+    marginRight: theme.spacing.sm,
+  },
   checkbox: {
     width: 24,
     height: 24,
@@ -1405,6 +1508,47 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: theme.typography.weights.semibold as any,
     textDecorationLine: 'underline',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.spacing.xl,
+  },
+  modalContent: {
+    width: '100%',
+    maxHeight: '85%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xxl,
+    padding: theme.spacing.xl,
+  },
+  modalTitle: {
+    fontSize: theme.typography.sizes.xl,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
+  },
+  modalScroll: {
+    maxHeight: 360,
+    marginBottom: theme.spacing.lg,
+  },
+  modalBody: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+  },
+  modalCloseButton: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+    backgroundColor: theme.colors.buttonPrimary,
+    borderRadius: theme.borderRadius.lg,
+  },
+  modalCloseText: {
+    color: theme.colors.buttonText,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
   },
 });
 
