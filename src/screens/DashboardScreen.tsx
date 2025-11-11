@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   TextInput,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
@@ -53,6 +54,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const [expandedAssets, setExpandedAssets] = useState<Record<string, boolean>>({});
   const [expandedPolicies, setExpandedPolicies] = useState<Record<string, boolean>>({});
   const [selectedManagement, setSelectedManagement] = useState<'assets' | 'policies' | null>(null);
+  const [showBeneficiariesModal, setShowBeneficiariesModal] = useState(false);
   const [inlineTarget, setInlineTarget] =
     useState<{ type: 'asset' | 'policy'; id: string } | null>(null);
   const [inlineForm, setInlineForm] = useState({
@@ -63,6 +65,59 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     phone: '',
   });
   const [inlineSaving, setInlineSaving] = useState(false);
+
+  const beneficiarySummaries = useMemo(() => {
+    const summaries: Record<
+      string,
+      {
+        beneficiary: BeneficiaryInformation;
+        assets: AssetInformation[];
+        policies: PolicyInformation[];
+      }
+    > = {};
+
+    Object.entries(assetBeneficiaries).forEach(([assetId, beneficiaries]) => {
+      const asset = assets.find(item => item.asset_id === assetId);
+      if (!asset) return;
+
+      beneficiaries.forEach(beneficiary => {
+        if (!summaries[beneficiary.beneficiary_id]) {
+          summaries[beneficiary.beneficiary_id] = {
+            beneficiary,
+            assets: [],
+            policies: [],
+          };
+        }
+        summaries[beneficiary.beneficiary_id].assets.push(asset);
+      });
+    });
+
+    Object.entries(policyBeneficiaries).forEach(([policyId, beneficiaries]) => {
+      const policy = policies.find(item => item.policy_id === policyId);
+      if (!policy) return;
+
+      beneficiaries.forEach(beneficiary => {
+        if (!summaries[beneficiary.beneficiary_id]) {
+          summaries[beneficiary.beneficiary_id] = {
+            beneficiary,
+            assets: [],
+            policies: [],
+          };
+        }
+        summaries[beneficiary.beneficiary_id].policies.push(policy);
+      });
+    });
+
+    return Object.values(summaries).sort((a, b) => {
+      const nameA =
+        a.beneficiary.beneficiary_name ||
+        `${a.beneficiary.beneficiary_first_name || ''} ${a.beneficiary.beneficiary_surname || ''}`.trim();
+      const nameB =
+        b.beneficiary.beneficiary_name ||
+        `${b.beneficiary.beneficiary_first_name || ''} ${b.beneficiary.beneficiary_surname || ''}`.trim();
+      return nameA.localeCompare(nameB);
+    });
+  }, [assetBeneficiaries, policyBeneficiaries, assets, policies]);
 
   useEffect(() => {
     if (currentUser) {
@@ -382,6 +437,18 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     </View>
   );
 
+  const renderAssetNavIcon = () => (
+    <View style={styles.assetNavIcon}>
+      <Ionicons name="document-text-outline" size={28} color={theme.colors.primary} />
+      <Ionicons
+        name="home-outline"
+        size={18}
+        color={theme.colors.primary}
+        style={styles.assetNavHouseIcon}
+      />
+    </View>
+  );
+
   const renderAssetCard = (asset: AssetInformation) => {
     const linked = assetBeneficiaries[asset.asset_id] || [];
     const isExpanded = expandedAssets[asset.asset_id];
@@ -594,7 +661,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
                 setSelectedManagement(prev => (prev === 'assets' ? null : 'assets'))
               }
             >
-              <Ionicons name="document-text" size={28} color={theme.colors.primary} />
+              {renderAssetNavIcon()}
               <Text style={styles.navTabNumber}>{assetsCount}</Text>
             </TouchableOpacity>
 
@@ -612,11 +679,9 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             <TouchableOpacity
               style={[
                 styles.navTab,
-                selectedManagement === 'policies' && styles.navTabActive,
+                showBeneficiariesModal && styles.navTabActive,
               ]}
-              onPress={() =>
-                setSelectedManagement(prev => (prev === 'policies' ? null : 'policies'))
-              }
+              onPress={() => setShowBeneficiariesModal(true)}
             >
               <Ionicons name="people" size={28} color={theme.colors.primary} />
               <Text style={styles.navTabNumber}>{beneficiariesCount}</Text>
@@ -754,6 +819,98 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         </View>
       </ScrollView>
 
+      <Modal
+        visible={showBeneficiariesModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowBeneficiariesModal(false)}
+      >
+        <View style={styles.beneficiaryModalOverlay}>
+          <View style={styles.beneficiaryModalContent}>
+            <View style={styles.beneficiaryModalHeader}>
+              <Text style={styles.beneficiaryModalTitle}>Beneficiaries Overview</Text>
+              <TouchableOpacity onPress={() => setShowBeneficiariesModal(false)}>
+                <Ionicons name="close" size={22} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.beneficiaryModalScroll}
+              contentContainerStyle={styles.beneficiaryModalScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {beneficiarySummaries.length === 0 ? (
+                <Text style={styles.beneficiaryModalEmpty}>
+                  No beneficiaries linked yet.
+                </Text>
+              ) : (
+                beneficiarySummaries.map(summary => {
+                  const displayName =
+                    summary.beneficiary.beneficiary_name ||
+                    `${summary.beneficiary.beneficiary_first_name || ''} ${
+                      summary.beneficiary.beneficiary_surname || ''
+                    }`.trim() ||
+                    'Unnamed Beneficiary';
+
+                  return (
+                    <View
+                      key={summary.beneficiary.beneficiary_id}
+                      style={styles.beneficiaryModalCard}
+                    >
+                      <Text style={styles.beneficiaryModalName}>{displayName}</Text>
+                      {summary.beneficiary.relationship_to_user ? (
+                        <Text style={styles.beneficiaryModalMeta}>
+                          Relationship: {summary.beneficiary.relationship_to_user}
+                        </Text>
+                      ) : null}
+                      {summary.beneficiary.beneficiary_email ? (
+                        <Text style={styles.beneficiaryModalMeta}>
+                          Email: {summary.beneficiary.beneficiary_email}
+                        </Text>
+                      ) : null}
+                      {summary.beneficiary.beneficiary_phone ? (
+                        <Text style={styles.beneficiaryModalMeta}>
+                          Phone: {summary.beneficiary.beneficiary_phone}
+                        </Text>
+                      ) : null}
+
+                      <View style={styles.beneficiaryModalSection}>
+                        <Text style={styles.beneficiaryModalSectionTitle}>Assets</Text>
+                        {summary.assets.length === 0 ? (
+                          <Text style={styles.beneficiaryModalEmptyItem}>
+                            Not linked to any assets yet.
+                          </Text>
+                        ) : (
+                          summary.assets.map(asset => (
+                            <Text key={asset.asset_id} style={styles.beneficiaryModalItem}>
+                              • {asset.asset_name}
+                            </Text>
+                          ))
+                        )}
+                      </View>
+
+                      <View style={styles.beneficiaryModalSection}>
+                        <Text style={styles.beneficiaryModalSectionTitle}>Policies</Text>
+                        {summary.policies.length === 0 ? (
+                          <Text style={styles.beneficiaryModalEmptyItem}>
+                            Not linked to any policies yet.
+                          </Text>
+                        ) : (
+                          summary.policies.map(policy => (
+                            <Text key={policy.policy_id} style={styles.beneficiaryModalItem}>
+                              • {policy.policy_number} ({policy.insurance_company})
+                            </Text>
+                          ))
+                        )}
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Modals */}
       <AssetPolicyModal
         visible={showAssetPolicyModal}
@@ -841,6 +998,19 @@ const styles = StyleSheet.create({
   },
   navTabActive: {
     transform: [{ scale: 1.05 }],
+  },
+  assetNavIcon: {
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  assetNavHouseIcon: {
+    position: 'absolute',
+    bottom: -2,
+    right: -4,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 10,
+    padding: 2,
   },
   navTabNumber: {
     fontSize: theme.typography.sizes.xl,
@@ -1142,6 +1312,81 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.success,
     fontWeight: theme.typography.weights.semibold as any,
+  },
+  beneficiaryModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.spacing.xl,
+  },
+  beneficiaryModalContent: {
+    width: '100%',
+    maxHeight: '85%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xxl,
+    padding: theme.spacing.xl,
+  },
+  beneficiaryModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  beneficiaryModalTitle: {
+    fontSize: theme.typography.sizes.xl,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+  },
+  beneficiaryModalScroll: {
+    maxHeight: 420,
+  },
+  beneficiaryModalScrollContent: {
+    paddingBottom: theme.spacing.lg,
+  },
+  beneficiaryModalEmpty: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    marginTop: theme.spacing.xl,
+  },
+  beneficiaryModalCard: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.xl,
+    padding: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
+    backgroundColor: theme.colors.background,
+  },
+  beneficiaryModalName: {
+    fontSize: theme.typography.sizes.lg,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  beneficiaryModalMeta: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.xs / 1.5,
+  },
+  beneficiaryModalSection: {
+    marginTop: theme.spacing.md,
+  },
+  beneficiaryModalSectionTitle: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  beneficiaryModalItem: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.xs / 1.2,
+  },
+  beneficiaryModalEmptyItem: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    fontStyle: 'italic',
   },
   loadingContainer: {
     flex: 1,
