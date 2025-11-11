@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,32 +9,141 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
 import * as ImagePicker from 'expo-image-picker';
+import { useAuth } from '../contexts/AuthContext';
+import UserService from '../services/userService';
+import Toast from '../components/Toast';
+import { formatSAPhoneNumber, isValidSAPhoneNumber } from '../utils/phoneFormatter';
 
 interface UpdateProfileScreenProps {
   navigation: any;
 }
 
 const UpdateProfileScreen: React.FC<UpdateProfileScreenProps> = ({ navigation }) => {
+  const { currentUser } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error'>('success');
+  
   const [formData, setFormData] = useState({
-    fullName: 'Mzixi Xoli',
-    email: 'mzixi@example.com',
-    phone: '+27123456789',
-    idNumber: '200109858660098',
-    policyNumber: 'POL-12345678-123',
+    firstName: '',
+    surname: '',
+    fullName: '',
+    email: '',
+    phone: '',
+    idNumber: '',
+    policyNumber: '',
     profilePicturePath: '',
   });
+
+  useEffect(() => {
+    loadUserData();
+  }, [currentUser]);
+
+  const loadUserData = async () => {
+    if (!currentUser) {
+      setToastMessage('No user logged in');
+      setToastType('error');
+      setShowToast(true);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const userData = await UserService.getUserById(currentUser.uid);
+      if (userData) {
+        setFormData({
+          firstName: userData.first_name || '',
+          surname: userData.surname || '',
+          fullName: userData.full_name || `${userData.first_name || ''} ${userData.surname || ''}`.trim(),
+          email: userData.email || '',
+          phone: userData.phone || '',
+          idNumber: userData.id_number || '',
+          policyNumber: userData.policy_number || '',
+          profilePicturePath: userData.profile_picture_path || '',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error);
+      setToastMessage('Failed to load user data');
+      setToastType('error');
+      setShowToast(true);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const updateFormData = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSave = () => {
-    // TODO: Save to Firebase
-    navigation.goBack();
+  const handleSave = async () => {
+    if (!currentUser) {
+      setToastMessage('No user logged in');
+      setToastType('error');
+      setShowToast(true);
+      return;
+    }
+
+    // Validate phone number format
+    if (formData.phone && !isValidSAPhoneNumber(formData.phone)) {
+      setToastMessage('Please enter a valid South African phone number');
+      setToastType('error');
+      setShowToast(true);
+      return;
+    }
+
+    // Validate required fields
+    if (!formData.firstName.trim() || !formData.surname.trim()) {
+      setToastMessage('First name and surname are required');
+      setToastType('error');
+      setShowToast(true);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updateData: any = {
+        first_name: formData.firstName.trim(),
+        surname: formData.surname.trim(),
+        email: formData.email.trim(),
+      };
+
+      // Format and add phone if provided
+      if (formData.phone) {
+        updateData.phone = formatSAPhoneNumber(formData.phone);
+      }
+
+      // Add profile picture if changed
+      if (formData.profilePicturePath) {
+        updateData.profile_picture_path = formData.profilePicturePath;
+      }
+
+      await UserService.updateUser(currentUser.uid, updateData);
+      
+      setToastMessage('Profile updated successfully');
+      setToastType('success');
+      setShowToast(true);
+      
+      // Navigate back after a short delay
+      setTimeout(() => {
+        navigation.goBack();
+      }, 1500);
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      setToastMessage('Failed to update profile');
+      setToastType('error');
+      setShowToast(true);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const pickProfileImage = async () => {
@@ -52,6 +161,17 @@ const UpdateProfileScreen: React.FC<UpdateProfileScreenProps> = ({ navigation })
       updateFormData('profilePicturePath', result.assets[0].uri);
     }
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -86,13 +206,22 @@ const UpdateProfileScreen: React.FC<UpdateProfileScreenProps> = ({ navigation })
           </TouchableOpacity>
           <Text style={styles.subtitle}>Update your personal details</Text>
 
-          <Text style={styles.label}>Full Name</Text>
+          <Text style={styles.label}>First Name</Text>
           <TextInput
             style={styles.input}
-            placeholder="Full Name"
+            placeholder="First Name"
             placeholderTextColor={theme.colors.placeholder}
-            value={formData.fullName}
-            onChangeText={(value) => updateFormData('fullName', value)}
+            value={formData.firstName}
+            onChangeText={(value) => updateFormData('firstName', value)}
+          />
+
+          <Text style={styles.label}>Surname</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Surname"
+            placeholderTextColor={theme.colors.placeholder}
+            value={formData.surname}
+            onChangeText={(value) => updateFormData('surname', value)}
           />
 
           <Text style={styles.label}>Email Address</Text>
@@ -109,7 +238,7 @@ const UpdateProfileScreen: React.FC<UpdateProfileScreenProps> = ({ navigation })
           <Text style={styles.label}>Phone Number</Text>
           <TextInput
             style={styles.input}
-            placeholder="Phone Number"
+            placeholder="Phone Number (e.g., 082 581 6642)"
             placeholderTextColor={theme.colors.placeholder}
             value={formData.phone}
             onChangeText={(value) => updateFormData('phone', value)}
@@ -138,10 +267,25 @@ const UpdateProfileScreen: React.FC<UpdateProfileScreenProps> = ({ navigation })
         </ScrollView>
 
         <View style={styles.footer}>
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-            <Text style={styles.saveButtonText}>Save Changes</Text>
+          <TouchableOpacity 
+            style={[styles.saveButton, saving && styles.saveButtonDisabled]} 
+            onPress={handleSave}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={theme.colors.buttonText} />
+            ) : (
+              <Text style={styles.saveButtonText}>Save Changes</Text>
+            )}
           </TouchableOpacity>
         </View>
+
+        <Toast
+          visible={showToast}
+          message={toastMessage}
+          type={toastType}
+          onHide={() => setShowToast(false)}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -154,6 +298,16 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: theme.spacing.md,
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.textSecondary,
   },
   header: {
     flexDirection: 'row',
@@ -255,6 +409,9 @@ const styles = StyleSheet.create({
     borderRadius: theme.borderRadius.xl,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
   },
   saveButtonText: {
     fontSize: theme.typography.sizes.lg,
