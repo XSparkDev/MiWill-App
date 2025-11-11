@@ -12,6 +12,7 @@ import {
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
@@ -33,6 +34,37 @@ const policyTypes = [
   'other',
 ];
 
+const policyTypeDescriptions: Record<string, { title: string; subtitle: string }> = {
+  life_insurance: {
+    title: 'Life Insurance Policy Guidance',
+    subtitle:
+      'Life cover pays out a lump sum to beneficiaries when the policyholder passes away. Capture policy number, insurer, and nominated beneficiaries. Confirm whether any binding beneficiary nominations already exist with the insurer.',
+  },
+  health_insurance: {
+    title: 'Health Insurance Policy Guidance',
+    subtitle:
+      'Comprehensive or gap cover policies may provide additional medical benefits. Document waiting periods, dependants, and benefits. Speak to an attorney or broker regarding transfer or continuation rules.',
+  },
+  property_insurance: {
+    title: 'Property Insurance Guidance',
+    subtitle:
+      'Homeowner’s policies protect buildings against damage or loss. Record insurer, cover limits, and any bond-holder requirements. Ensure executor or beneficiary knows to update ownership after transfer.',
+  },
+  vehicle_insurance: {
+    title: 'Vehicle Insurance Guidance',
+    subtitle:
+      'Vehicle cover includes comprehensive, third-party, fire, and theft policies. Note premium status, nominated drivers, and claims history. Executors must arrange cancellation or transfer when ownership changes.',
+  },
+  other: {
+    title: 'Other Policy Guidance',
+    subtitle:
+      'Use this category for policies not listed above. Provide as much detail as possible so beneficiaries understand cover limits, waiting periods, and any documentation required for claims.',
+  },
+};
+
+const getPolicyDisclaimer = () =>
+  'Read more about policy, please consult an attorney for further information';
+
 const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
   const { currentUser } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
@@ -42,6 +74,8 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'error' | 'success' | 'info'>('error');
+  const [infoModalVisible, setInfoModalVisible] = useState(false);
+  const [infoModalContent, setInfoModalContent] = useState<{ title: string; subtitle: string } | null>(null);
 
   const [formData, setFormData] = useState({
     policyNumber: '',
@@ -55,6 +89,18 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
 
   const updateFormData = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const openPolicyInfo = (policyType: string) => {
+    if (!policyType) return;
+    const content = policyTypeDescriptions[policyType] ?? policyTypeDescriptions.other;
+    setInfoModalContent(content);
+    setInfoModalVisible(true);
+  };
+
+  const closePolicyInfo = () => {
+    setInfoModalVisible(false);
+    setInfoModalContent(null);
   };
 
   const nextStep = async () => {
@@ -227,6 +273,13 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
               ))}
             </ScrollView>
 
+            {formData.policyType ? (
+              <TouchableOpacity style={styles.disclaimerBox} onPress={() => openPolicyInfo(formData.policyType)}>
+                <Ionicons name="information-circle" size={20} color={theme.colors.info} />
+                <Text style={styles.disclaimerText}>{getPolicyDisclaimer()}</Text>
+              </TouchableOpacity>
+            ) : null}
+
             <TextInput
               style={styles.input}
               placeholder="Insurance Company"
@@ -361,6 +414,26 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
         type={toastType}
         onHide={() => setShowToast(false)}
       />
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={infoModalVisible}
+        onRequestClose={closePolicyInfo}
+      >
+        <View style={styles.infoModalOverlay}>
+          <View style={styles.infoModalContainer}>
+            <View style={styles.infoModalHeader}>
+              <Ionicons name="information-circle-outline" size={28} color={theme.colors.primary} />
+              <Text style={styles.infoModalTitle}>{infoModalContent?.title}</Text>
+            </View>
+            <Text style={styles.infoModalSubtitle}>{infoModalContent?.subtitle}</Text>
+            <TouchableOpacity style={styles.infoModalButton} onPress={closePolicyInfo}>
+              <Text style={styles.infoModalButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -450,6 +523,21 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.md,
     color: theme.colors.text,
   },
+  disclaimerBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.info + '15',
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+  },
+  disclaimerText: {
+    marginLeft: theme.spacing.sm,
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.text,
+    flex: 1,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.xs,
+  },
   reviewContainer: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.xl,
@@ -505,6 +593,48 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.lg,
     fontWeight: theme.typography.weights.semibold as any,
     color: theme.colors.buttonText,
+  },
+  infoModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.spacing.xl,
+  },
+  infoModalContainer: {
+    width: '100%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xxl,
+    padding: theme.spacing.xl,
+  },
+  infoModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  infoModalTitle: {
+    fontSize: theme.typography.sizes.lg,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginLeft: theme.spacing.sm,
+  },
+  infoModalSubtitle: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+    marginBottom: theme.spacing.xl,
+  },
+  infoModalButton: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.buttonPrimary,
+  },
+  infoModalButtonText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.buttonText,
+    fontWeight: theme.typography.weights.semibold as any,
   },
 });
 

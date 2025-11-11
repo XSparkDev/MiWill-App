@@ -13,6 +13,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Linking,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
@@ -38,6 +39,49 @@ const assetTypes = [
   'other',
 ];
 
+const assetTypeDescriptions: Record<string, { title: string; subtitle: string }> = {
+  property: {
+    title: 'Property Asset Guidance',
+    subtitle:
+      'Include residential or commercial properties. Clearly document ownership, outstanding bonds, and any co-owners. Percentages are typically required for property allocations.',
+  },
+  vehicle: {
+    title: 'Vehicle Asset Guidance',
+    subtitle:
+      'List motor vehicles, motorcycles, or boats. Provide registration details and note any finance agreements. Vehicles usually transfer in full—percentage allocation is not necessary.',
+  },
+  bank_account: {
+    title: 'Bank Account Guidance',
+    subtitle:
+      'Capture bank name, account type, and account number. Indicate whether it is a joint account. Consult an attorney on estate liquidity and settlement nuances.',
+  },
+  investment: {
+    title: 'Investment Asset Guidance',
+    subtitle:
+      'Include unit trusts, retirement funds, or stock portfolios. Ensure beneficiary designations align with the policy rules. Percentages help clarify asset splits.',
+  },
+  jewelry: {
+    title: 'Jewelry Asset Guidance',
+    subtitle:
+      'Detail significant jewellery pieces with descriptions and appraisals if available. These items generally transfer as a whole, so a percentage is not required.',
+  },
+  artwork: {
+    title: 'Artwork Asset Guidance',
+    subtitle:
+      'Document art collections, provenance, and valuation certificates. Artwork can be bequeathed outright—percentage allocation is usually unnecessary.',
+  },
+  business: {
+    title: 'Business Asset Guidance',
+    subtitle:
+      'Outline the business entity, shareholding breakdown, and succession wishes. Consult legal counsel to ensure alignment with shareholder agreements and tax obligations.',
+  },
+  other: {
+    title: 'Other Asset Guidance',
+    subtitle:
+      'Use this category for assets that do not fit the predefined list. Include as much detail as possible so that executors understand your intentions.',
+  },
+};
+
 const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
   const { currentUser } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
@@ -47,6 +91,8 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'error' | 'success' | 'info'>('error');
+  const [infoModalVisible, setInfoModalVisible] = useState(false);
+  const [infoModalContent, setInfoModalContent] = useState<{ title: string; subtitle: string } | null>(null);
 
   const [formData, setFormData] = useState({
     assetName: '',
@@ -70,6 +116,18 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
 
   const getAssetDisclaimer = (assetType: string): string => {
     return 'Read more about asset class, please consult an attorney for further information';
+  };
+
+  const openAssetInfo = (assetType: string) => {
+    if (!assetType) return;
+    const content = assetTypeDescriptions[assetType] ?? assetTypeDescriptions.other;
+    setInfoModalContent(content);
+    setInfoModalVisible(true);
+  };
+
+  const closeAssetInfo = () => {
+    setInfoModalVisible(false);
+    setInfoModalContent(null);
   };
 
   const nextStep = async () => {
@@ -237,10 +295,10 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
             </ScrollView>
 
             {formData.assetType && (
-              <View style={styles.disclaimerBox}>
+              <TouchableOpacity style={styles.disclaimerBox} onPress={() => openAssetInfo(formData.assetType)}>
                 <Ionicons name="information-circle" size={20} color={theme.colors.info} />
                 <Text style={styles.disclaimerText}>{getAssetDisclaimer(formData.assetType)}</Text>
-              </View>
+              </TouchableOpacity>
             )}
 
             <TextInput
@@ -379,6 +437,26 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
         type={toastType}
         onHide={() => setShowToast(false)}
       />
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={infoModalVisible}
+        onRequestClose={closeAssetInfo}
+      >
+        <View style={styles.infoModalOverlay}>
+          <View style={styles.infoModalContainer}>
+            <View style={styles.infoModalHeader}>
+              <Ionicons name="information-circle-outline" size={28} color={theme.colors.primary} />
+              <Text style={styles.infoModalTitle}>{infoModalContent?.title}</Text>
+            </View>
+            <Text style={styles.infoModalSubtitle}>{infoModalContent?.subtitle}</Text>
+            <TouchableOpacity style={styles.infoModalButton} onPress={closeAssetInfo}>
+              <Text style={styles.infoModalButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -539,6 +617,48 @@ const styles = StyleSheet.create({
     marginLeft: theme.spacing.sm,
     flex: 1,
     lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.xs,
+  },
+  infoModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.spacing.xl,
+  },
+  infoModalContainer: {
+    width: '100%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xxl,
+    padding: theme.spacing.xl,
+  },
+  infoModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  infoModalTitle: {
+    fontSize: theme.typography.sizes.lg,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginLeft: theme.spacing.sm,
+  },
+  infoModalSubtitle: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+    marginBottom: theme.spacing.xl,
+  },
+  infoModalButton: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.buttonPrimary,
+  },
+  infoModalButtonText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.buttonText,
+    fontWeight: theme.typography.weights.semibold as any,
   },
 });
 
