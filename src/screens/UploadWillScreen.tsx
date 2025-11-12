@@ -23,15 +23,7 @@ import { theme } from '../config/theme.config';
 import { useAuth } from '../contexts/AuthContext';
 import WillService from '../services/willService';
 import { WillInformation } from '../types/will';
-let WebView: any = null;
-try {
-  // Lazily require so native dependency isn't mandatory in all environments
-  // eslint-disable-next-line global-require
-  const webviewModule = require('react-native-webview');
-  WebView = webviewModule.WebView || webviewModule.default;
-} catch (error) {
-  WebView = null;
-}
+import { WebView } from 'react-native-webview';
 
 interface UploadWillScreenProps {
   navigation: any;
@@ -41,6 +33,150 @@ type AiEditorSection = {
   title: string;
   content: string;
 };
+
+const PDF_HTML_WRAPPER = (base64Content: string) => `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * 'unsafe-inline'; img-src * data: blob: 'unsafe-inline'; frame-src *; style-src * 'unsafe-inline';">
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background-color: #111111;
+        color: #ffffff;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      }
+      #viewer {
+        width: 100%;
+        min-height: 100%;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+      }
+      canvas {
+        width: 100% !important;
+        height: auto !important;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        background-color: #ffffff;
+      }
+      #loader {
+        color: #ffffff;
+        font-size: 16px;
+        margin-top: 24px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="viewer">
+      <div id="loader">Loading PDF viewer...</div>
+    </div>
+    <script>
+      (function() {
+        const viewer = document.getElementById('viewer');
+        const loader = document.getElementById('loader');
+        
+        function loadPDFJS() {
+          return new Promise(function(resolve, reject) {
+            if (window.pdfjsLib) {
+              resolve(window.pdfjsLib);
+              return;
+            }
+            
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+            script.onload = function() {
+              if (window.pdfjsLib) {
+                resolve(window.pdfjsLib);
+              } else {
+                reject(new Error('PDF.js library not found after loading'));
+              }
+            };
+            script.onerror = function() {
+              reject(new Error('Failed to load PDF.js script'));
+            };
+            document.head.appendChild(script);
+          });
+        }
+        
+        function renderPDF(pdfjsLib) {
+          try {
+            const pdfBase64 = '${base64Content}';
+            const raw = atob(pdfBase64);
+            const uint8Array = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i++) {
+              uint8Array[i] = raw.charCodeAt(i);
+            }
+
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+            pdfjsLib.getDocument({ data: uint8Array }).promise.then(function(pdf) {
+              loader.innerText = '';
+              const totalPages = pdf.numPages;
+
+              const renderPage = function(pageNumber) {
+                pdf.getPage(pageNumber).then(function(page) {
+                  const viewport = page.getViewport({ scale: 1.5 });
+                  const canvas = document.createElement('canvas');
+                  const context = canvas.getContext('2d');
+                  canvas.width = viewport.width;
+                  canvas.height = viewport.height;
+                  viewer.appendChild(canvas);
+
+                  const renderContext = {
+                    canvasContext: context,
+                    viewport: viewport
+                  };
+
+                  page.render(renderContext).promise.then(function() {
+                    if (pageNumber < totalPages) {
+                      renderPage(pageNumber + 1);
+                    } else {
+                      loader.style.display = 'none';
+                    }
+                  }).catch(function(err) {
+                    console.error('Render error for page ' + pageNumber, err);
+                    loader.innerText = 'Failed to render page ' + pageNumber + '.';
+                  });
+                }).catch(function(err) {
+                  console.error('Page load error for page ' + pageNumber, err);
+                  loader.innerText = 'Failed to load page ' + pageNumber + '.';
+                });
+              };
+
+              renderPage(1);
+            }).catch(function(error) {
+              console.error('PDF load error', error);
+              loader.innerText = 'Failed to load PDF document: ' + (error.message || 'Unknown error');
+            });
+          } catch (error) {
+            console.error('PDF processing error', error);
+            loader.innerText = 'Error processing PDF: ' + (error.message || 'Unknown error');
+          }
+        }
+        
+        loadPDFJS()
+          .then(function(pdfjsLib) {
+            renderPDF(pdfjsLib);
+          })
+          .catch(function(error) {
+            console.error('PDF.js loading error', error);
+            loader.innerText = 'Unable to load PDF viewer: ' + (error.message || 'Unknown error');
+          });
+      })();
+    </script>
+  </body>
+</html>
+`;
 
 const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
   const { currentUser } = useAuth();
@@ -62,6 +198,8 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
   const [audioSound, setAudioSound] = useState<Audio.Sound | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackStatus, setPlaybackStatus] = useState<any>(null);
+  const [documentSource, setDocumentSource] = useState<{ html?: string; uri?: string } | null>(null);
+  const [documentLoading, setDocumentLoading] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const loadExistingWills = useCallback(async () => {
@@ -255,7 +393,97 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       Alert.alert('Unavailable', 'No viewable path is stored for this will.');
       return;
     }
-    
+
+    setDocumentSource(null);
+    setDocumentLoading(false);
+
+    if (will.will_type === 'document') {
+      setDocumentLoading(true);
+
+      try {
+        const extension = path.split('.').pop()?.toLowerCase() || 'pdf';
+        const supportedTypes = ['pdf'];
+
+        if (!supportedTypes.includes(extension)) {
+          Alert.alert(
+            'Preview Not Supported',
+            'This document type cannot be previewed in-app. Please download it to view.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+
+        const isRemoteFile = path.startsWith('http://') || path.startsWith('https://');
+        let localPath = path;
+
+        if (isRemoteFile) {
+          try {
+            const fs = FileSystem as any;
+            const cacheDir = fs.cacheDirectory || fs.documentDirectory;
+            if (!cacheDir) {
+              throw new Error('Unable to access cache directory.');
+            }
+            const fileName = path.split('/').pop() || `${will.will_id}.${extension}`;
+            const downloadUri = `${cacheDir}preview_${fileName}`;
+            const downloadResult = await FileSystem.downloadAsync(path, downloadUri);
+            if (downloadResult.status !== 200) {
+              throw new Error(`Failed to download document (status ${downloadResult.status}).`);
+            }
+            localPath = downloadResult.uri;
+          } catch (downloadError: any) {
+            console.error('Error downloading remote document:', downloadError);
+            Alert.alert(
+              'Preview Error',
+              'Failed to download the document for preview. Please try again or download it manually.',
+              [{ text: 'OK' }]
+            );
+            return;
+          }
+        }
+
+        const fileInfo = await FileSystemLegacy.getInfoAsync(localPath);
+        if (!fileInfo.exists) {
+          Alert.alert('Error', 'Document file not found.');
+          return;
+        }
+
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (fileInfo.size && fileInfo.size > maxSize) {
+          Alert.alert(
+            'File Too Large',
+            'This file is too large to preview in-app. Please download it to view.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+
+        const base64 = await FileSystemLegacy.readAsStringAsync(localPath, {
+          encoding: 'base64' as any,
+        });
+
+        if (!base64 || base64.length === 0) {
+          throw new Error('Unable to read document content.');
+        }
+
+        const sanitizedBase64 = base64.replace(/(\r\n|\n|\r)/gm, '');
+        const pdfHtml = PDF_HTML_WRAPPER(sanitizedBase64);
+        setDocumentSource({ html: pdfHtml });
+      } catch (error: any) {
+        console.error('Error preparing document for preview:', error);
+        Alert.alert(
+          'Preview Error',
+          error.message || 'Failed to prepare the document for preview.',
+          [{ text: 'OK' }]
+        );
+        return;
+      } finally {
+        setDocumentLoading(false);
+      }
+    } else {
+      setDocumentSource(null);
+    }
+
+    // For all will types (document, audio, video), use the modal preview
     // Stop any currently playing audio
     if (audioSound) {
       try {
@@ -282,6 +510,8 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       setIsPlaying(false);
     }
     setPreviewWill(null);
+    setDocumentSource(null);
+    setDocumentLoading(false);
   };
 
   const handlePlayPauseAudio = async () => {
@@ -1066,28 +1296,62 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
 
               case 'document':
               default:
-                if (WebView) {
+                if (documentLoading) {
                   return (
-                    <WebView
-                      source={{ uri: path }}
-                      style={styles.previewWebView}
-                      startInLoadingState
-                      renderLoading={() => (
-                        <View style={styles.previewLoading}>
-                          <ActivityIndicator size="large" color={theme.colors.primary} />
-                        </View>
-                      )}
-                    />
+                    <View style={styles.previewLoading}>
+                      <ActivityIndicator size="large" color={theme.colors.primary} />
+                      <Text style={styles.previewLoadingText}>Loading document...</Text>
+                    </View>
                   );
-                } else {
+                }
+
+                if (!documentSource) {
                   return (
                     <View style={styles.previewErrorContainer}>
                       <Text style={styles.previewErrorText}>
-                        WebView is not available. Please download the file to view it.
+                        Document preview is not available.
                       </Text>
                     </View>
                   );
                 }
+
+                const webViewSource = documentSource.html
+                  ? { html: documentSource.html }
+                  : { uri: documentSource.uri as string };
+
+                return (
+                  <WebView
+                    originWhitelist={['*']}
+                    source={webViewSource}
+                    style={styles.previewWebView}
+                    startInLoadingState
+                    javaScriptEnabled
+                    domStorageEnabled
+                    renderLoading={() => (
+                      <View style={styles.previewLoading}>
+                        <ActivityIndicator size="large" color={theme.colors.primary} />
+                      </View>
+                    )}
+                    onError={syntheticEvent => {
+                      const { nativeEvent } = syntheticEvent;
+                      console.error('WebView error: ', nativeEvent);
+                      Alert.alert(
+                        'Preview Error',
+                        'Failed to load the document. Please download it to view.',
+                        [{ text: 'OK', onPress: () => handleClosePreview() }]
+                      );
+                    }}
+                    onHttpError={syntheticEvent => {
+                      const { nativeEvent } = syntheticEvent;
+                      console.error('WebView HTTP error: ', nativeEvent);
+                      Alert.alert(
+                        'Preview Error',
+                        'Failed to load the document from the server.',
+                        [{ text: 'OK', onPress: () => handleClosePreview() }]
+                      );
+                    }}
+                  />
+                );
             }
           })()}
         </SafeAreaView>
@@ -1504,6 +1768,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: theme.colors.background,
+  },
+  previewLoadingText: {
+    marginTop: theme.spacing.md,
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.textSecondary,
   },
   previewErrorContainer: {
     flex: 1,
