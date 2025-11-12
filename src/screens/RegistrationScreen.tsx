@@ -137,8 +137,15 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         );
       case 1: // Notification Frequency
         return !!formData.notificationFrequency;
-      case 2: // Attorney (optional, always valid)
-        return true;
+      case 2: // Attorney (button enabled only if all required fields filled OR skip clicked)
+        if (formData.attorneySkipped) return true;
+        // Button is disabled unless all required fields are filled
+        return !!(
+          formData.attorneyFirstName.trim() &&
+          formData.attorneySurname.trim() &&
+          formData.attorneyEmail.trim() &&
+          formData.attorneyPhone.trim()
+        );
       case 3: // Executor
         return !!(
           formData.executorFirstName.trim() &&
@@ -179,7 +186,25 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
   }, []);
 
   const updateFormData = (field: keyof StepData, value: string | boolean) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      const updated = { ...prev, [field]: value };
+      
+      // Reset attorneySkipped if user starts filling in attorney fields
+      if (
+        currentStep === 2 &&
+        (field === 'attorneyFirstName' || 
+         field === 'attorneySurname' || 
+         field === 'attorneyEmail' || 
+         field === 'attorneyPhone') &&
+        value && 
+        typeof value === 'string' &&
+        value.trim()
+      ) {
+        updated.attorneySkipped = false;
+      }
+      
+      return updated;
+    });
   };
 
   const handleExecutorSameAsAttorney = () => {
@@ -409,6 +434,11 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 
   const previousStep = () => {
     if (currentStep > 0) {
+      // Reset attorneySkipped when going back to attorney step
+      if (currentStep === 3) {
+        setFormData(prev => ({ ...prev, attorneySkipped: false }));
+      }
+      
       // Animate out
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -441,6 +471,21 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     } else {
       navigation.goBack();
     }
+  };
+
+  const handleCancelRegistration = () => {
+    Alert.alert(
+      'Cancel Registration',
+      'Are you sure you want to cancel registration? All progress will be lost.',
+      [
+        { text: 'Continue Registration', style: 'cancel' },
+        {
+          text: 'Cancel',
+          style: 'destructive',
+          onPress: () => navigation.goBack(),
+        },
+      ]
+    );
   };
 
   const renderProgressBar = () => {
@@ -1076,6 +1121,18 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* Cancel button for steps 1-5 */}
+          {currentStep >= 1 && currentStep <= 5 && (
+            <View style={styles.cancelButtonContainer}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={handleCancelRegistration}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -1222,6 +1279,22 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.medium as any,
+  },
+  cancelButtonContainer: {
+    alignItems: 'center',
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
+  },
+  cancelButton: {
+    alignSelf: 'center',
+    paddingHorizontal: theme.spacing.xl,
+    paddingVertical: theme.spacing.sm,
+  },
+  cancelButtonText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.weights.medium as any,
+    textDecorationLine: 'underline',
   },
   stepTitle: {
     fontSize: theme.typography.sizes.xxl,
@@ -1457,16 +1530,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   policyNumberLabel: {
-    fontSize: theme.typography.sizes.sm,
+    fontSize: theme.typography.sizes.xs,
     color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.xs,
+    marginBottom: theme.spacing.xs / 2,
     fontWeight: theme.typography.weights.medium as any,
   },
   policyNumberValue: {
-    fontSize: theme.typography.sizes.xl,
+    fontSize: theme.typography.sizes.sm,
     color: theme.colors.primary,
-    fontWeight: theme.typography.weights.bold as any,
-    letterSpacing: 1,
+    fontWeight: theme.typography.weights.semibold as any,
+    letterSpacing: 0.5,
   },
   popiaContainer: {
     flexDirection: 'row',

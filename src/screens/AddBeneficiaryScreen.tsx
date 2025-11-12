@@ -12,6 +12,7 @@ import {
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
@@ -338,6 +339,45 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
     } finally {
       setInlineAdding(false);
     }
+  };
+
+  const handleDelinkBeneficiary = (type: 'asset' | 'policy', id: string, beneficiary: any) => {
+    const itemName = type === 'asset'
+      ? assets.find(a => a.asset_id === id)?.asset_name || 'this asset'
+      : policies.find(p => p.policy_id === id)?.policy_number || 'this policy';
+
+    Alert.alert(
+      'Delink Beneficiary',
+      `Are you sure you want to delink ${beneficiary.beneficiary_name || 'this beneficiary'} from ${itemName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delink',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (type === 'asset') {
+                await BeneficiaryService.delinkAssetFromBeneficiary(id, beneficiary.beneficiary_id);
+                setAssetBeneficiaries(prev => ({
+                  ...prev,
+                  [id]: prev[id].filter(b => b.beneficiary_id !== beneficiary.beneficiary_id),
+                }));
+              } else {
+                await BeneficiaryService.delinkPolicyFromBeneficiary(id, beneficiary.beneficiary_id);
+                setPolicyBeneficiaries(prev => ({
+                  ...prev,
+                  [id]: prev[id].filter(b => b.beneficiary_id !== beneficiary.beneficiary_id),
+                }));
+              }
+              setToast({ message: 'Beneficiary delinked successfully.', type: 'success' });
+            } catch (error) {
+              console.error('Error delinking beneficiary:', error);
+              setToast({ message: 'Failed to delink beneficiary.', type: 'error' });
+            }
+          },
+        },
+      ]
+    );
   };
 
   const addAdditionalBeneficiary = () => {
@@ -879,7 +919,12 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                           <Text style={styles.linkedBeneficiariesHint}>Tap + to add more</Text>
                         </View>
                         {assetBeneficiaries[asset.asset_id].map((ben: any, idx: number) => (
-                          <Text key={idx} style={styles.linkedBeneficiaryItem}>• {ben.beneficiary_name}</Text>
+                          <View key={idx} style={styles.linkedBeneficiaryItemRow}>
+                            <Text style={styles.linkedBeneficiaryItem}>• {ben.beneficiary_name}</Text>
+                            <TouchableOpacity onPress={() => handleDelinkBeneficiary('asset', asset.asset_id, ben)}>
+                              <Ionicons name="close-circle" size={16} color={theme.colors.error} />
+                            </TouchableOpacity>
+                          </View>
                         ))}
                       </View>
                     )}
@@ -1028,7 +1073,12 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                           <Text style={styles.linkedBeneficiariesHint}>Tap + to add more</Text>
                         </View>
                         {policyBeneficiaries[policy.policy_id].map((ben: any, idx: number) => (
-                          <Text key={idx} style={styles.linkedBeneficiaryItem}>• {ben.beneficiary_name}</Text>
+                          <View key={idx} style={styles.linkedBeneficiaryItemRow}>
+                            <Text style={styles.linkedBeneficiaryItem}>• {ben.beneficiary_name}</Text>
+                            <TouchableOpacity onPress={() => handleDelinkBeneficiary('policy', policy.policy_id, ben)}>
+                              <Ionicons name="close-circle" size={16} color={theme.colors.error} />
+                            </TouchableOpacity>
+                          </View>
                         ))}
                       </View>
                     )}
@@ -1468,11 +1518,17 @@ const styles = StyleSheet.create({
     color: theme.colors.success,
     fontStyle: 'italic',
   },
+  linkedBeneficiaryItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
   linkedBeneficiaryItem: {
     fontSize: theme.typography.sizes.xs,
     color: theme.colors.textSecondary,
     marginLeft: theme.spacing.sm,
-    marginBottom: 2,
+    flex: 1,
   },
   actionIconsContainer: {
     flexDirection: 'row',

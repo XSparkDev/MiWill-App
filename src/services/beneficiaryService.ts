@@ -241,6 +241,80 @@ export class BeneficiaryService {
   }
 
   /**
+   * Delink beneficiary from asset
+   */
+  static async delinkAssetFromBeneficiary(assetId: string, beneficiaryId: string): Promise<void> {
+    try {
+      const q = query(
+        collection(db, this.assetLinksCollection),
+        where('asset_id', '==', assetId),
+        where('beneficiary_id', '==', beneficiaryId)
+      );
+      const linkSnapshot = await getDocs(q);
+      
+      const deletePromises = linkSnapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+    } catch (error: any) {
+      throw new Error(`Failed to delink asset from beneficiary: ${error.message}`);
+    }
+  }
+
+  /**
+   * Delink beneficiary from policy
+   */
+  static async delinkPolicyFromBeneficiary(policyId: string, beneficiaryId: string): Promise<void> {
+    try {
+      const q = query(
+        collection(db, this.policyLinksCollection),
+        where('policy_id', '==', policyId),
+        where('beneficiary_id', '==', beneficiaryId)
+      );
+      const linkSnapshot = await getDocs(q);
+      
+      const deletePromises = linkSnapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+    } catch (error: any) {
+      throw new Error(`Failed to delink policy from beneficiary: ${error.message}`);
+    }
+  }
+
+  /**
+   * Delink all beneficiaries from an asset (used when deleting asset)
+   */
+  static async delinkAllBeneficiariesFromAsset(assetId: string): Promise<void> {
+    try {
+      const q = query(
+        collection(db, this.assetLinksCollection),
+        where('asset_id', '==', assetId)
+      );
+      const linkSnapshot = await getDocs(q);
+      
+      const deletePromises = linkSnapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+    } catch (error: any) {
+      throw new Error(`Failed to delink all beneficiaries from asset: ${error.message}`);
+    }
+  }
+
+  /**
+   * Delink all beneficiaries from a policy (used when deleting policy)
+   */
+  static async delinkAllBeneficiariesFromPolicy(policyId: string): Promise<void> {
+    try {
+      const q = query(
+        collection(db, this.policyLinksCollection),
+        where('policy_id', '==', policyId)
+      );
+      const linkSnapshot = await getDocs(q);
+      
+      const deletePromises = linkSnapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+    } catch (error: any) {
+      throw new Error(`Failed to delink all beneficiaries from policy: ${error.message}`);
+    }
+  }
+
+  /**
    * Map Firestore data to BeneficiaryInformation
    */
   private static mapFirestoreData(data: any): BeneficiaryInformation {

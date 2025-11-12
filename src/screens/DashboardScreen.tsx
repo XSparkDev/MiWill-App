@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   TextInput,
   Modal,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
@@ -378,6 +379,121 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     }
   };
 
+  const handleDelinkBeneficiary = (type: 'asset' | 'policy', id: string, beneficiary: BeneficiaryInformation) => {
+    const itemName = type === 'asset' 
+      ? assets.find(a => a.asset_id === id)?.asset_name || 'this asset'
+      : policies.find(p => p.policy_id === id)?.policy_number || 'this policy';
+    
+    Alert.alert(
+      'Delink Beneficiary',
+      `Are you sure you want to delink ${beneficiary.beneficiary_name || 'this beneficiary'} from ${itemName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delink',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (type === 'asset') {
+                await BeneficiaryService.delinkAssetFromBeneficiary(id, beneficiary.beneficiary_id);
+                setAssetBeneficiaries(prev => ({
+                  ...prev,
+                  [id]: prev[id].filter(b => b.beneficiary_id !== beneficiary.beneficiary_id),
+                }));
+              } else {
+                await BeneficiaryService.delinkPolicyFromBeneficiary(id, beneficiary.beneficiary_id);
+                setPolicyBeneficiaries(prev => ({
+                  ...prev,
+                  [id]: prev[id].filter(b => b.beneficiary_id !== beneficiary.beneficiary_id),
+                }));
+              }
+              setToastMessage('Beneficiary delinked successfully.');
+              setToastType('success');
+              setShowToast(true);
+            } catch (error) {
+              console.error('Error delinking beneficiary:', error);
+              setToastMessage('Failed to delink beneficiary.');
+              setToastType('error');
+              setShowToast(true);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteAsset = (asset: AssetInformation) => {
+    const linkedBeneficiaries = assetBeneficiaries[asset.asset_id] || [];
+    const warningMessage = linkedBeneficiaries.length > 0
+      ? `This asset has ${linkedBeneficiaries.length} linked beneficiary/beneficiaries. All links will be removed. Are you sure you want to delete ${asset.asset_name}?`
+      : `Are you sure you want to delete ${asset.asset_name}?`;
+
+    Alert.alert('Delete Asset', warningMessage, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await BeneficiaryService.delinkAllBeneficiariesFromAsset(asset.asset_id);
+            await AssetService.deleteAsset(asset.asset_id);
+            setAssets(prev => prev.filter(a => a.asset_id !== asset.asset_id));
+            setAssetBeneficiaries(prev => {
+              const updated = { ...prev };
+              delete updated[asset.asset_id];
+              return updated;
+            });
+            setAssetsCount(prev => prev - 1);
+            setToastMessage('Asset deleted successfully.');
+            setToastType('success');
+            setShowToast(true);
+          } catch (error) {
+            console.error('Error deleting asset:', error);
+            setToastMessage('Failed to delete asset.');
+            setToastType('error');
+            setShowToast(true);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleDeletePolicy = (policy: PolicyInformation) => {
+    const linkedBeneficiaries = policyBeneficiaries[policy.policy_id] || [];
+    const warningMessage = linkedBeneficiaries.length > 0
+      ? `This policy has ${linkedBeneficiaries.length} linked beneficiary/beneficiaries. All links will be removed. Are you sure you want to delete ${policy.policy_number}?`
+      : `Are you sure you want to delete ${policy.policy_number}?`;
+
+    Alert.alert('Delete Policy', warningMessage, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await BeneficiaryService.delinkAllBeneficiariesFromPolicy(policy.policy_id);
+            await PolicyService.deletePolicy(policy.policy_id);
+            setPolicies(prev => prev.filter(p => p.policy_id !== policy.policy_id));
+            setPolicyBeneficiaries(prev => {
+              const updated = { ...prev };
+              delete updated[policy.policy_id];
+              return updated;
+            });
+            setPoliciesCount(prev => prev - 1);
+            setToastMessage('Policy deleted successfully.');
+            setToastType('success');
+            setShowToast(true);
+          } catch (error) {
+            console.error('Error deleting policy:', error);
+            setToastMessage('Failed to delete policy.');
+            setToastType('error');
+            setShowToast(true);
+          }
+        },
+      },
+    ]);
+  };
+
   const renderInlineForm = () => (
     <View style={styles.inlineAddContainer}>
       <TextInput
@@ -482,6 +598,12 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             >
               <Ionicons name="add-circle-outline" size={18} color={theme.colors.success} />
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.managementIconButton}
+              onPress={() => handleDeleteAsset(asset)}
+            >
+              <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
+            </TouchableOpacity>
             <Ionicons
               name={isExpanded ? 'chevron-up' : 'chevron-down'}
               size={18}
@@ -496,9 +618,12 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             {linked.length > 0 ? (
               <View style={styles.linkedList}>
                 {linked.map(ben => (
-                  <Text key={ben.beneficiary_id} style={styles.linkedItem}>
-                    • {ben.beneficiary_name}
-                  </Text>
+                  <View key={ben.beneficiary_id} style={styles.linkedItemRow}>
+                    <Text style={styles.linkedItem}>• {ben.beneficiary_name}</Text>
+                    <TouchableOpacity onPress={() => handleDelinkBeneficiary('asset', asset.asset_id, ben)}>
+                      <Ionicons name="close-circle" size={18} color={theme.colors.error} />
+                    </TouchableOpacity>
+                  </View>
                 ))}
               </View>
             ) : (
@@ -548,6 +673,12 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             >
               <Ionicons name="add-circle-outline" size={18} color={theme.colors.success} />
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.managementIconButton}
+              onPress={() => handleDeletePolicy(policy)}
+            >
+              <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
+            </TouchableOpacity>
             <Ionicons
               name={isExpanded ? 'chevron-up' : 'chevron-down'}
               size={18}
@@ -562,9 +693,12 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             {linked.length > 0 ? (
               <View style={styles.linkedList}>
                 {linked.map(ben => (
-                  <Text key={ben.beneficiary_id} style={styles.linkedItem}>
-                    • {ben.beneficiary_name}
-                  </Text>
+                  <View key={ben.beneficiary_id} style={styles.linkedItemRow}>
+                    <Text style={styles.linkedItem}>• {ben.beneficiary_name}</Text>
+                    <TouchableOpacity onPress={() => handleDelinkBeneficiary('policy', policy.policy_id, ben)}>
+                      <Ionicons name="close-circle" size={18} color={theme.colors.error} />
+                    </TouchableOpacity>
+                  </View>
                 ))}
               </View>
             ) : (
@@ -733,18 +867,6 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
         {selectedManagement === 'assets' && renderAssetsManager()}
         {selectedManagement === 'policies' && renderPoliciesManager()}
-
-        {/* User Information */}
-        <View style={styles.userInfo}>
-          <Text style={styles.infoLabel}>Full Names</Text>
-          <Text style={styles.infoValue}>{userProfile?.full_name || '-'}</Text>
-
-          <Text style={styles.infoLabel}>ID Number</Text>
-          <Text style={styles.infoValue}>{userProfile?.id_number || '-'}</Text>
-
-          <Text style={styles.infoLabel}>Policy No.</Text>
-          <Text style={styles.infoValue}>{userProfile?.policy_number || '-'}</Text>
-        </View>
 
         {/* Action Buttons */}
         <View style={styles.actionsContainer}>
@@ -1146,10 +1268,16 @@ const styles = StyleSheet.create({
   linkedList: {
     marginBottom: theme.spacing.sm,
   },
+  linkedItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing.xs,
+  },
   linkedItem: {
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.text,
-    marginBottom: theme.spacing.xs,
+    flex: 1,
   },
   linkedEmpty: {
     fontSize: theme.typography.sizes.sm,
