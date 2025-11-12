@@ -587,8 +587,8 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               onPress={() => toggleAssetRow(asset.asset_id)}
             >
               <Ionicons
-                name="eye-outline"
-                size={18}
+                name={isExpanded ? "eye" : "eye-off-outline"}
+                size={24}
                 color={isExpanded ? theme.colors.primary : theme.colors.textSecondary}
               />
             </TouchableOpacity>
@@ -596,13 +596,13 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               style={styles.managementIconButton}
               onPress={() => beginInlineAdd('asset', asset.asset_id)}
             >
-              <Ionicons name="add-circle-outline" size={18} color={theme.colors.success} />
+              <Ionicons name="add-circle-outline" size={24} color={theme.colors.success} />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.managementIconButton}
               onPress={() => handleDeleteAsset(asset)}
             >
-              <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
+              <Ionicons name="trash-outline" size={24} color={theme.colors.error} />
             </TouchableOpacity>
             <Ionicons
               name={isExpanded ? 'chevron-up' : 'chevron-down'}
@@ -621,7 +621,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
                   <View key={ben.beneficiary_id} style={styles.linkedItemRow}>
                     <Text style={styles.linkedItem}>• {ben.beneficiary_name}</Text>
                     <TouchableOpacity onPress={() => handleDelinkBeneficiary('asset', asset.asset_id, ben)}>
-                      <Ionicons name="close-circle" size={18} color={theme.colors.error} />
+                      <Ionicons name="close-circle" size={28} color={theme.colors.error} />
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -662,8 +662,8 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               onPress={() => togglePolicyRow(policy.policy_id)}
             >
               <Ionicons
-                name="eye-outline"
-                size={18}
+                name={isExpanded ? "eye" : "eye-off-outline"}
+                size={24}
                 color={isExpanded ? theme.colors.primary : theme.colors.textSecondary}
               />
             </TouchableOpacity>
@@ -671,13 +671,13 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               style={styles.managementIconButton}
               onPress={() => beginInlineAdd('policy', policy.policy_id)}
             >
-              <Ionicons name="add-circle-outline" size={18} color={theme.colors.success} />
+              <Ionicons name="add-circle-outline" size={24} color={theme.colors.success} />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.managementIconButton}
               onPress={() => handleDeletePolicy(policy)}
             >
-              <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
+              <Ionicons name="trash-outline" size={24} color={theme.colors.error} />
             </TouchableOpacity>
             <Ionicons
               name={isExpanded ? 'chevron-up' : 'chevron-down'}
@@ -696,7 +696,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
                   <View key={ben.beneficiary_id} style={styles.linkedItemRow}>
                     <Text style={styles.linkedItem}>• {ben.beneficiary_name}</Text>
                     <TouchableOpacity onPress={() => handleDelinkBeneficiary('policy', policy.policy_id, ben)}>
-                      <Ionicons name="close-circle" size={18} color={theme.colors.error} />
+                      <Ionicons name="close-circle" size={28} color={theme.colors.error} />
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -718,7 +718,13 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       <Text style={styles.managementToggleTitle}>Assets ({assets.length})</Text>
       <View style={styles.managementList}>
         {assets.length === 0 ? (
-          <Text style={styles.managementEmpty}>No assets added yet.</Text>
+          <TouchableOpacity 
+            style={styles.managementEmptyButton}
+            onPress={() => navigation.navigate('AddAsset')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.managementEmptyText}>No assets added yet</Text>
+          </TouchableOpacity>
         ) : (
           assets.map(renderAssetCard)
         )}
@@ -731,7 +737,13 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       <Text style={styles.managementToggleTitle}>Policies ({policies.length})</Text>
       <View style={styles.managementList}>
         {policies.length === 0 ? (
-          <Text style={styles.managementEmpty}>No policies added yet.</Text>
+          <TouchableOpacity 
+            style={styles.managementEmptyButton}
+            onPress={() => navigation.navigate('AddPolicy')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.managementEmptyText}>No policies added yet</Text>
+          </TouchableOpacity>
         ) : (
           policies.map(renderPolicyCard)
         )}
@@ -1211,6 +1223,22 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     paddingVertical: theme.spacing.sm,
   },
+  managementEmptyButton: {
+    backgroundColor: theme.colors.surface,
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.full,
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: theme.spacing.sm,
+  },
+  managementEmptyText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.text,
+    fontWeight: theme.typography.weights.medium as any,
+  },
   managementCard: {
     backgroundColor: theme.colors.background,
     borderWidth: 1,
@@ -1248,9 +1276,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   managementIconButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: theme.spacing.xs,
@@ -1275,9 +1303,10 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.xs,
   },
   linkedItem: {
-    fontSize: theme.typography.sizes.sm,
+    fontSize: theme.typography.sizes.lg,
     color: theme.colors.text,
     flex: 1,
+    fontWeight: theme.typography.weights.medium as any,
   },
   linkedEmpty: {
     fontSize: theme.typography.sizes.sm,

@@ -161,6 +161,47 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
     fetchData();
   }, [currentUser]);
 
+  // Refresh data when screen comes into focus (e.g., after adding asset/policy)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (currentUser) {
+        const refreshData = async () => {
+          try {
+            setLoading(true);
+            const [userAssets, userPolicies] = await Promise.all([
+              AssetService.getUserAssets(currentUser.uid),
+              PolicyService.getUserPolicies(currentUser.uid),
+            ]);
+            setAssets(userAssets);
+            setPolicies(userPolicies);
+            
+            // Fetch beneficiaries for each asset
+            const assetBeneficiariesMap: Record<string, any[]> = {};
+            for (const asset of userAssets) {
+              const beneficiaries = await BeneficiaryService.getBeneficiariesForAsset(asset.asset_id);
+              assetBeneficiariesMap[asset.asset_id] = beneficiaries;
+            }
+            setAssetBeneficiaries(assetBeneficiariesMap);
+            
+            // Fetch beneficiaries for each policy
+            const policyBeneficiariesMap: Record<string, any[]> = {};
+            for (const policy of userPolicies) {
+              const beneficiaries = await BeneficiaryService.getBeneficiariesForPolicy(policy.policy_id);
+              policyBeneficiariesMap[policy.policy_id] = beneficiaries;
+            }
+            setPolicyBeneficiaries(policyBeneficiariesMap);
+          } catch (error: any) {
+            console.error('[AddBeneficiaryScreen] Error refreshing data:', error);
+          } finally {
+            setLoading(false);
+          }
+        };
+        refreshData();
+      }
+    });
+    return unsubscribe;
+  }, [navigation, currentUser]);
+
   const updateFormData = (field: keyof typeof formData, value: string | string[]) => {
     setFormData(prev => {
       const updated: typeof prev = { ...prev };
@@ -418,6 +459,14 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
 
   const removeAdditionalBeneficiary = (id: string) => {
     setAdditionalBeneficiaries(prev => prev.filter(entry => entry.id !== id));
+  };
+
+  const handleAddAsset = () => {
+    navigation.navigate('AddAsset');
+  };
+
+  const handleAddPolicy = () => {
+    navigation.navigate('AddPolicy');
   };
 
   const nextStep = () => {
@@ -847,7 +896,16 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
       case 1:
         return (
           <Animated.View style={[styles.stepContainer, animatedStyle]}>
-            <Text style={styles.stepTitle}>Link Assets</Text>
+            <View style={styles.stepTitleContainer}>
+              <Text style={styles.stepTitle}>Link Assets</Text>
+              <TouchableOpacity
+                style={styles.addNewButton}
+                onPress={handleAddAsset}
+              >
+                <Ionicons name="add-circle" size={28} color={theme.colors.primary} />
+                <Text style={styles.addNewButtonText}>Add Asset</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.iconContainer}>
               <Ionicons name="home-outline" size={60} color={theme.colors.primary} />
             </View>
@@ -891,8 +949,8 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                           onPress={() => toggleAssetBeneficiaries(asset.asset_id)}
                         >
                           <Ionicons
-                            name="eye-outline"
-                            size={18}
+                            name={assetBeneficiariesExpanded[asset.asset_id] ? "eye" : "eye-off-outline"}
+                            size={24}
                             color={
                               assetBeneficiariesExpanded[asset.asset_id]
                                 ? theme.colors.primary
@@ -904,7 +962,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                           style={styles.actionIcon}
                           onPress={() => beginInlineAdd('asset', asset.asset_id)}
                         >
-                          <Ionicons name="add-circle-outline" size={18} color={theme.colors.success} />
+                          <Ionicons name="add-circle-outline" size={24} color={theme.colors.success} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -922,7 +980,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                           <View key={idx} style={styles.linkedBeneficiaryItemRow}>
                             <Text style={styles.linkedBeneficiaryItem}>• {ben.beneficiary_name}</Text>
                             <TouchableOpacity onPress={() => handleDelinkBeneficiary('asset', asset.asset_id, ben)}>
-                              <Ionicons name="close-circle" size={16} color={theme.colors.error} />
+                              <Ionicons name="close-circle" size={28} color={theme.colors.error} />
                             </TouchableOpacity>
                           </View>
                         ))}
@@ -999,7 +1057,16 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
       case 2:
         return (
           <Animated.View style={[styles.stepContainer, animatedStyle]}>
-            <Text style={styles.stepTitle}>Link Policies</Text>
+            <View style={styles.stepTitleContainer}>
+              <Text style={styles.stepTitle}>Link Policies</Text>
+              <TouchableOpacity
+                style={styles.addNewButton}
+                onPress={handleAddPolicy}
+              >
+                <Ionicons name="add-circle" size={28} color={theme.colors.primary} />
+                <Text style={styles.addNewButtonText}>Add Policy</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.iconContainer}>
               <Ionicons name="shield-checkmark-outline" size={60} color={theme.colors.primary} />
             </View>
@@ -1045,8 +1112,8 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                           onPress={() => togglePolicyBeneficiaries(policy.policy_id)}
                         >
                           <Ionicons
-                            name="eye-outline"
-                            size={18}
+                            name={policyBeneficiariesExpanded[policy.policy_id] ? "eye" : "eye-off-outline"}
+                            size={24}
                             color={
                               policyBeneficiariesExpanded[policy.policy_id]
                                 ? theme.colors.primary
@@ -1058,7 +1125,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                           style={styles.actionIcon}
                           onPress={() => beginInlineAdd('policy', policy.policy_id)}
                         >
-                          <Ionicons name="add-circle-outline" size={18} color={theme.colors.success} />
+                          <Ionicons name="add-circle-outline" size={24} color={theme.colors.success} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -1076,7 +1143,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                           <View key={idx} style={styles.linkedBeneficiaryItemRow}>
                             <Text style={styles.linkedBeneficiaryItem}>• {ben.beneficiary_name}</Text>
                             <TouchableOpacity onPress={() => handleDelinkBeneficiary('policy', policy.policy_id, ben)}>
-                              <Ionicons name="close-circle" size={16} color={theme.colors.error} />
+                              <Ionicons name="close-circle" size={28} color={theme.colors.error} />
                             </TouchableOpacity>
                           </View>
                         ))}
@@ -1344,12 +1411,35 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 400,
   },
+  stepTitleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+    paddingHorizontal: theme.spacing.sm,
+  },
   stepTitle: {
     fontSize: theme.typography.sizes.xxl,
     fontWeight: theme.typography.weights.bold as any,
     color: theme.colors.text,
-    marginBottom: theme.spacing.md,
+    flex: 1,
     textAlign: 'center',
+  },
+  addNewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.primary + '15',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+  },
+  addNewButtonText: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.primary,
+    marginLeft: theme.spacing.xs,
   },
   iconContainer: {
     alignItems: 'center',
@@ -1525,10 +1615,11 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   linkedBeneficiaryItem: {
-    fontSize: theme.typography.sizes.xs,
-    color: theme.colors.textSecondary,
+    fontSize: theme.typography.sizes.lg,
+    color: theme.colors.text,
     marginLeft: theme.spacing.sm,
     flex: 1,
+    fontWeight: theme.typography.weights.medium as any,
   },
   actionIconsContainer: {
     flexDirection: 'row',
@@ -1536,10 +1627,10 @@ const styles = StyleSheet.create({
     marginLeft: theme.spacing.sm,
   },
   actionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.primary + '15',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.primary + '12',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: theme.spacing.xs,
