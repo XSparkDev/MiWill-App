@@ -36,27 +36,27 @@ const policyTypes = [
 
 const policyTypeDescriptions: Record<string, { title: string; subtitle: string }> = {
   life_insurance: {
-    title: 'Life Insurance Policy Guidance',
+    title: 'Life Insurance Policy Guide',
     subtitle:
       'Life cover pays out a lump sum to beneficiaries when the policyholder passes away. Capture policy number, insurer, and nominated beneficiaries. Confirm whether any binding beneficiary nominations already exist with the insurer.',
   },
   health_insurance: {
-    title: 'Health Insurance Policy Guidance',
+    title: 'Health Insurance Policy Guide',
     subtitle:
       'Comprehensive or gap cover policies may provide additional medical benefits. Document waiting periods, dependants, and benefits. Speak to an attorney or broker regarding transfer or continuation rules.',
   },
   property_insurance: {
-    title: 'Property Insurance Guidance',
+    title: 'Property Insurance Guide',
     subtitle:
       'Homeowner’s policies protect buildings against damage or loss. Record insurer, cover limits, and any bond-holder requirements. Ensure executor or beneficiary knows to update ownership after transfer.',
   },
   vehicle_insurance: {
-    title: 'Vehicle Insurance Guidance',
+    title: 'Vehicle Insurance Guide',
     subtitle:
       'Vehicle cover includes comprehensive, third-party, fire, and theft policies. Note premium status, nominated drivers, and claims history. Executors must arrange cancellation or transfer when ownership changes.',
   },
   other: {
-    title: 'Other Policy Guidance',
+    title: 'Other Policy Guide',
     subtitle:
       'Use this category for policies not listed above. Provide as much detail as possible so beneficiaries understand cover limits, waiting periods, and any documentation required for claims.',
   },

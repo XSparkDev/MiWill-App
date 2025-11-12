@@ -458,6 +458,86 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     ]);
   };
 
+  const handleDelinkBeneficiaryFromItem = (type: 'asset' | 'policy', itemId: string, beneficiary: BeneficiaryInformation) => {
+    const itemName = type === 'asset'
+      ? assets.find(a => a.asset_id === itemId)?.asset_name || 'this asset'
+      : policies.find(p => p.policy_id === itemId)?.policy_number || 'this policy';
+    
+    const beneficiaryName = beneficiary.beneficiary_name || 
+      `${beneficiary.beneficiary_first_name || ''} ${beneficiary.beneficiary_surname || ''}`.trim() ||
+      'this beneficiary';
+
+    Alert.alert(
+      'Delink Beneficiary',
+      `Are you sure you want to delink ${beneficiaryName} from ${itemName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delink',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (type === 'asset') {
+                await BeneficiaryService.delinkAssetFromBeneficiary(itemId, beneficiary.beneficiary_id);
+              } else {
+                await BeneficiaryService.delinkPolicyFromBeneficiary(itemId, beneficiary.beneficiary_id);
+              }
+              setToastMessage('Beneficiary delinked successfully.');
+              setToastType('success');
+              setShowToast(true);
+              // Refresh dashboard data
+              loadDashboardData();
+            } catch (error) {
+              console.error('Error delinking beneficiary:', error);
+              setToastMessage('Failed to delink beneficiary.');
+              setToastType('error');
+              setShowToast(true);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteBeneficiary = (beneficiary: BeneficiaryInformation) => {
+    const beneficiaryName = beneficiary.beneficiary_name || 
+      `${beneficiary.beneficiary_first_name || ''} ${beneficiary.beneficiary_surname || ''}`.trim() ||
+      'this beneficiary';
+
+    const totalLinks = (beneficiarySummaries.find(s => s.beneficiary.beneficiary_id === beneficiary.beneficiary_id)?.assets.length || 0) +
+      (beneficiarySummaries.find(s => s.beneficiary.beneficiary_id === beneficiary.beneficiary_id)?.policies.length || 0);
+
+    const warningMessage = totalLinks > 0
+      ? `This beneficiary is linked to ${totalLinks} asset(s)/policy(ies). All links will be removed. Are you sure you want to delete ${beneficiaryName}?`
+      : `Are you sure you want to delete ${beneficiaryName}?`;
+
+    Alert.alert('Delete Beneficiary', warningMessage, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            // First delink all assets and policies
+            await BeneficiaryService.delinkAllFromBeneficiary(beneficiary.beneficiary_id);
+            // Then delete the beneficiary
+            await BeneficiaryService.deleteBeneficiary(beneficiary.beneficiary_id);
+            setToastMessage('Beneficiary deleted successfully.');
+            setToastType('success');
+            setShowToast(true);
+            // Refresh dashboard data
+            loadDashboardData();
+          } catch (error) {
+            console.error('Error deleting beneficiary:', error);
+            setToastMessage('Failed to delete beneficiary.');
+            setToastType('error');
+            setShowToast(true);
+          }
+        },
+      },
+    ]);
+  };
+
   const handleDeletePolicy = (policy: PolicyInformation) => {
     const linkedBeneficiaries = policyBeneficiaries[policy.policy_id] || [];
     const warningMessage = linkedBeneficiaries.length > 0
@@ -1015,9 +1095,15 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
                           </Text>
                         ) : (
                           summary.assets.map(asset => (
-                            <Text key={asset.asset_id} style={styles.beneficiaryModalItem}>
-                              • {asset.asset_name}
-                            </Text>
+                            <View key={asset.asset_id} style={styles.beneficiaryModalItemRow}>
+                              <Text style={styles.beneficiaryModalItem}>• {asset.asset_name}</Text>
+                              <TouchableOpacity
+                                onPress={() => handleDelinkBeneficiaryFromItem('asset', asset.asset_id, summary.beneficiary)}
+                                style={styles.beneficiaryModalDelinkButton}
+                              >
+                                <Ionicons name="close-circle" size={20} color={theme.colors.error} />
+                              </TouchableOpacity>
+                            </View>
                           ))
                         )}
                       </View>
@@ -1030,11 +1116,27 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
                           </Text>
                         ) : (
                           summary.policies.map(policy => (
-                            <Text key={policy.policy_id} style={styles.beneficiaryModalItem}>
-                              • {policy.policy_number} ({policy.insurance_company})
-                            </Text>
+                            <View key={policy.policy_id} style={styles.beneficiaryModalItemRow}>
+                              <Text style={styles.beneficiaryModalItem}>• {policy.policy_number} ({policy.insurance_company})</Text>
+                              <TouchableOpacity
+                                onPress={() => handleDelinkBeneficiaryFromItem('policy', policy.policy_id, summary.beneficiary)}
+                                style={styles.beneficiaryModalDelinkButton}
+                              >
+                                <Ionicons name="close-circle" size={20} color={theme.colors.error} />
+                              </TouchableOpacity>
+                            </View>
                           ))
                         )}
+                      </View>
+
+                      <View style={styles.beneficiaryModalActions}>
+                        <TouchableOpacity
+                          style={styles.beneficiaryModalDeleteButton}
+                          onPress={() => handleDeleteBeneficiary(summary.beneficiary)}
+                        >
+                          <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
+                          <Text style={styles.beneficiaryModalDeleteButtonText}>Delete Beneficiary</Text>
+                        </TouchableOpacity>
                       </View>
                     </View>
                   );
@@ -1535,10 +1637,43 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: theme.spacing.xs,
   },
+  beneficiaryModalItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing.xs / 1.2,
+  },
   beneficiaryModalItem: {
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.xs / 1.2,
+    flex: 1,
+  },
+  beneficiaryModalDelinkButton: {
+    padding: theme.spacing.xs,
+    marginLeft: theme.spacing.xs,
+  },
+  beneficiaryModalActions: {
+    marginTop: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  beneficiaryModalDeleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.error + '15',
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.error,
+  },
+  beneficiaryModalDeleteButtonText: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.error,
+    marginLeft: theme.spacing.xs,
   },
   beneficiaryModalEmptyItem: {
     fontSize: theme.typography.sizes.sm,

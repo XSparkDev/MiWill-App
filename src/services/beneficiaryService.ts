@@ -315,6 +315,33 @@ export class BeneficiaryService {
   }
 
   /**
+   * Delink all assets and policies from a beneficiary (used when deleting beneficiary)
+   */
+  static async delinkAllFromBeneficiary(beneficiaryId: string): Promise<void> {
+    try {
+      // Delink all assets
+      const assetLinksQuery = query(
+        collection(db, this.assetLinksCollection),
+        where('beneficiary_id', '==', beneficiaryId)
+      );
+      const assetLinksSnapshot = await getDocs(assetLinksQuery);
+      const assetDeletePromises = assetLinksSnapshot.docs.map(doc => deleteDoc(doc.ref));
+      
+      // Delink all policies
+      const policyLinksQuery = query(
+        collection(db, this.policyLinksCollection),
+        where('beneficiary_id', '==', beneficiaryId)
+      );
+      const policyLinksSnapshot = await getDocs(policyLinksQuery);
+      const policyDeletePromises = policyLinksSnapshot.docs.map(doc => deleteDoc(doc.ref));
+      
+      await Promise.all([...assetDeletePromises, ...policyDeletePromises]);
+    } catch (error: any) {
+      throw new Error(`Failed to delink all from beneficiary: ${error.message}`);
+    }
+  }
+
+  /**
    * Map Firestore data to BeneficiaryInformation
    */
   private static mapFirestoreData(data: any): BeneficiaryInformation {

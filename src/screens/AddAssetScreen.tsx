@@ -41,42 +41,42 @@ const assetTypes = [
 
 const assetTypeDescriptions: Record<string, { title: string; subtitle: string }> = {
   property: {
-    title: 'Property Asset Guidance',
+    title: 'Property Asset Guide',
     subtitle:
       'Include residential or commercial properties. Clearly document ownership, outstanding bonds, and any co-owners. Percentages are typically required for property allocations.',
   },
   vehicle: {
-    title: 'Vehicle Asset Guidance',
+    title: 'Vehicle Asset Guide',
     subtitle:
       'List motor vehicles, motorcycles, or boats. Provide registration details and note any finance agreements. Vehicles usually transfer in full—percentage allocation is not necessary.',
   },
   bank_account: {
-    title: 'Bank Account Guidance',
+    title: 'Bank Account Guide',
     subtitle:
       'Capture bank name, account type, and account number. Indicate whether it is a joint account. Consult an attorney on estate liquidity and settlement nuances.',
   },
   investment: {
-    title: 'Investment Asset Guidance',
+    title: 'Investment Asset Guide',
     subtitle:
       'Include unit trusts, retirement funds, or stock portfolios. Ensure beneficiary designations align with the policy rules. Percentages help clarify asset splits.',
   },
   jewelry: {
-    title: 'Jewelry Asset Guidance',
+    title: 'Jewelry Asset Guide',
     subtitle:
       'Detail significant jewellery pieces with descriptions and appraisals if available. These items generally transfer as a whole, so a percentage is not required.',
   },
   artwork: {
-    title: 'Artwork Asset Guidance',
+    title: 'Artwork Asset Guide',
     subtitle:
       'Document art collections, provenance, and valuation certificates. Artwork can be bequeathed outright—percentage allocation is usually unnecessary.',
   },
   business: {
-    title: 'Business Asset Guidance',
+    title: 'Business Asset Guide',
     subtitle:
       'Outline the business entity, shareholding breakdown, and succession wishes. Consult legal counsel to ensure alignment with shareholder agreements and tax obligations.',
   },
   other: {
-    title: 'Other Asset Guidance',
+    title: 'Other Asset Guide',
     subtitle:
       'Use this category for assets that do not fit the predefined list. Include as much detail as possible so that executors understand your intentions.',
   },
