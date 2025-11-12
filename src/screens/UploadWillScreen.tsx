@@ -15,7 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { Audio } from 'expo-av';
+import { Audio, Video, ResizeMode } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import * as FileSystemLegacy from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -59,6 +59,9 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
   const [aiError, setAiError] = useState<string | null>(null);
   // Removed aiDraftUri as it's not used
   const [previewWill, setPreviewWill] = useState<WillInformation | null>(null);
+  const [audioSound, setAudioSound] = useState<Audio.Sound | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackStatus, setPlaybackStatus] = useState<any>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const loadExistingWills = useCallback(async () => {
@@ -75,6 +78,17 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
   useEffect(() => {
     loadExistingWills();
   }, [loadExistingWills]);
+
+  // Cleanup audio when component unmounts or preview closes
+  useEffect(() => {
+    return () => {
+      if (audioSound) {
+        audioSound.unloadAsync().catch((error) => {
+          console.error('Error unloading audio on cleanup:', error);
+        });
+      }
+    };
+  }, [audioSound]);
 
   const defaultAiSections: AiEditorSection[] = [
     {
@@ -235,20 +249,77 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
     return null;
   };
 
-  const handleOpenExistingWill = (will: WillInformation) => {
+  const handleOpenExistingWill = async (will: WillInformation) => {
     const path = getWillSourcePath(will);
     if (!path) {
       Alert.alert('Unavailable', 'No viewable path is stored for this will.');
       return;
     }
-    if (!WebView) {
-      Alert.alert(
-        'Preview Unavailable',
-        'Web preview is not supported in this build. Please open the file from the dashboard or download it.'
-      );
-      return;
+    
+    // Stop any currently playing audio
+    if (audioSound) {
+      try {
+        await audioSound.unloadAsync();
+      } catch (error) {
+        console.error('Error unloading audio:', error);
+      }
+      setAudioSound(null);
+      setIsPlaying(false);
     }
+    
     setPreviewWill(will);
+  };
+
+  const handleClosePreview = async () => {
+    // Stop audio if playing
+    if (audioSound) {
+      try {
+        await audioSound.unloadAsync();
+      } catch (error) {
+        console.error('Error unloading audio:', error);
+      }
+      setAudioSound(null);
+      setIsPlaying(false);
+    }
+    setPreviewWill(null);
+  };
+
+  const handlePlayPauseAudio = async () => {
+    if (!previewWill || previewWill.will_type !== 'audio') return;
+    
+    const path = getWillSourcePath(previewWill);
+    if (!path) return;
+
+    try {
+      if (!audioSound) {
+        // Load and play audio
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: path },
+          { shouldPlay: true }
+        );
+        setAudioSound(sound);
+        setIsPlaying(true);
+        
+        sound.setOnPlaybackStatusUpdate((status) => {
+          setPlaybackStatus(status);
+          if (status.isLoaded && status.didJustFinish) {
+            setIsPlaying(false);
+          }
+        });
+      } else {
+        // Toggle play/pause
+        if (isPlaying) {
+          await audioSound.pauseAsync();
+          setIsPlaying(false);
+        } else {
+          await audioSound.playAsync();
+          setIsPlaying(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error playing audio:', error);
+      Alert.alert('Error', 'Failed to play audio file.');
+    }
   };
 
   const getWillTypeIcon = (will: WillInformation) => {
@@ -267,6 +338,14 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
     const date = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(date.getTime())) return 'Unknown';
     return date.toLocaleString();
+  };
+
+  const formatTime = (millis: number): string => {
+    if (!millis || isNaN(millis)) return '0:00';
+    const totalSeconds = Math.floor(millis / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
   const handleDownloadWill = async (will: WillInformation) => {
@@ -911,40 +990,108 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
         </View>
       </Modal>
 
-      {WebView && (
-        <Modal
-          visible={!!previewWill}
-          animationType="slide"
-          onRequestClose={() => setPreviewWill(null)}
-        >
-          <SafeAreaView style={styles.previewContainer}>
-            <View style={styles.previewHeader}>
-              <TouchableOpacity
-                onPress={() => setPreviewWill(null)}
-                style={styles.previewCloseButton}
-              >
-                <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-              </TouchableOpacity>
-              <Text style={styles.previewTitle}>
-                {previewWill ? getWillDisplayName(previewWill) : 'Preview'}
-              </Text>
-              <View style={{ width: 24 }} />
-            </View>
-            {previewWill && (
-              <WebView
-                source={{ uri: getWillSourcePath(previewWill) || '' }}
-                style={styles.previewWebView}
-                startInLoadingState
-                renderLoading={() => (
-                  <View style={styles.previewLoading}>
-                    <ActivityIndicator size="large" color={theme.colors.primary} />
+      <Modal
+        visible={!!previewWill}
+        animationType="slide"
+        onRequestClose={handleClosePreview}
+      >
+        <SafeAreaView style={styles.previewContainer}>
+          <View style={styles.previewHeader}>
+            <TouchableOpacity
+              onPress={handleClosePreview}
+              style={styles.previewCloseButton}
+            >
+              <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.previewTitle}>
+              {previewWill ? getWillDisplayName(previewWill) : 'Preview'}
+            </Text>
+            <View style={{ width: 24 }} />
+          </View>
+          {previewWill && (() => {
+            const path = getWillSourcePath(previewWill);
+            if (!path) {
+              return (
+                <View style={styles.previewErrorContainer}>
+                  <Text style={styles.previewErrorText}>File path not available</Text>
+                </View>
+              );
+            }
+
+            switch (previewWill.will_type) {
+              case 'audio':
+                return (
+                  <View style={styles.previewContent}>
+                    <View style={styles.audioPlayerContainer}>
+                      <Ionicons 
+                        name="musical-notes" 
+                        size={80} 
+                        color={theme.colors.primary} 
+                        style={styles.audioIcon}
+                      />
+                      <Text style={styles.audioFileName}>
+                        {getWillDisplayName(previewWill)}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.playButton}
+                        onPress={handlePlayPauseAudio}
+                      >
+                        <Ionicons
+                          name={isPlaying ? 'pause-circle' : 'play-circle'}
+                          size={64}
+                          color={theme.colors.primary}
+                        />
+                      </TouchableOpacity>
+                      {playbackStatus?.isLoaded && (
+                        <Text style={styles.audioTime}>
+                          {formatTime(playbackStatus.positionMillis)} / {formatTime(playbackStatus.durationMillis || 0)}
+                        </Text>
+                      )}
+                    </View>
                   </View>
-                )}
-              />
-            )}
-          </SafeAreaView>
-        </Modal>
-      )}
+                );
+
+              case 'video':
+                return (
+                  <View style={styles.previewContent}>
+                    <Video
+                      source={{ uri: path }}
+                      style={styles.videoPlayer}
+                      useNativeControls
+                      resizeMode={ResizeMode.CONTAIN}
+                      shouldPlay={false}
+                    />
+                  </View>
+                );
+
+              case 'document':
+              default:
+                if (WebView) {
+                  return (
+                    <WebView
+                      source={{ uri: path }}
+                      style={styles.previewWebView}
+                      startInLoadingState
+                      renderLoading={() => (
+                        <View style={styles.previewLoading}>
+                          <ActivityIndicator size="large" color={theme.colors.primary} />
+                        </View>
+                      )}
+                    />
+                  );
+                } else {
+                  return (
+                    <View style={styles.previewErrorContainer}>
+                      <Text style={styles.previewErrorText}>
+                        WebView is not available. Please download the file to view it.
+                      </Text>
+                    </View>
+                  );
+                }
+            }
+          })()}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1344,6 +1491,10 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
   },
+  previewContent: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
   previewWebView: {
     flex: 1,
     backgroundColor: theme.colors.background,
@@ -1352,6 +1503,45 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: theme.colors.background,
+  },
+  previewErrorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.spacing.xl,
+  },
+  previewErrorText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+  },
+  audioPlayerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.spacing.xl,
+  },
+  audioIcon: {
+    marginBottom: theme.spacing.xl,
+  },
+  audioFileName: {
+    fontSize: theme.typography.sizes.lg,
+    color: theme.colors.text,
+    fontWeight: theme.typography.weights.semibold as any,
+    marginBottom: theme.spacing.xl,
+    textAlign: 'center',
+  },
+  playButton: {
+    marginBottom: theme.spacing.lg,
+  },
+  audioTime: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.md,
+  },
+  videoPlayer: {
+    flex: 1,
     backgroundColor: theme.colors.background,
   },
 });
