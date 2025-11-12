@@ -17,8 +17,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
+import * as FileSystemLegacy from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { Platform } from 'react-native';
 import { theme } from '../config/theme.config';
 import { useAuth } from '../contexts/AuthContext';
 import WillService from '../services/willService';
@@ -57,7 +57,7 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
   const [aiCurrentStep, setAiCurrentStep] = useState(0);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [aiDraftUri, setAiDraftUri] = useState<string | null>(null);
+  // Removed aiDraftUri as it's not used
   const [previewWill, setPreviewWill] = useState<WillInformation | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -117,8 +117,8 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
 
   const loadDocumentContent = async (uri: string): Promise<string | null> => {
     try {
-      const content = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.UTF8,
+      const content = await FileSystemLegacy.readAsStringAsync(uri, {
+        encoding: 'utf8' as any,
       });
       return content;
     } catch (error) {
@@ -187,9 +187,10 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
   const saveAiDraft = async () => {
     try {
       const combinedContent = aiSections.map(section => section.content.trim()).join('\n\n');
-      const fileUri = `${FileSystem.documentDirectory}ai_will_${Date.now()}.txt`;
-      await FileSystem.writeAsStringAsync(fileUri, combinedContent, {
-        encoding: FileSystem.EncodingType.UTF8,
+      const fs = FileSystem as any;
+      const fileUri = `${fs.documentDirectory || fs.cacheDirectory}ai_will_${Date.now()}.txt`;
+      await FileSystemLegacy.writeAsStringAsync(fileUri, combinedContent, {
+        encoding: 'utf8' as any,
       });
 
       const aiFile = {
@@ -203,7 +204,6 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       setSelectedVideo(null);
       setSelectedAudio(null);
       setUploadType('file');
-      setAiDraftUri(fileUri);
       Alert.alert('AI Assistant', 'Your AI-assisted will draft has been saved and is ready to upload.');
       closeAiAssistant();
     } catch (error) {
@@ -285,52 +285,75 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
         : 'm4a';
       
       const fullFileName = fileName.includes('.') ? fileName : `${fileName}.${fileExtension}`;
-      
-      // Determine download directory based on platform
-      let downloadDir: string | null = null;
-      try {
-        const fs = FileSystem as any;
-        downloadDir = Platform.OS === 'ios' 
-          ? (fs.documentDirectory || fs.cacheDirectory)
-          : (fs.cacheDirectory || fs.documentDirectory);
-      } catch (error) {
-        console.error('Error accessing file system:', error);
-      }
-      
-      if (!downloadDir) {
-        Alert.alert('Error', 'Unable to access file system.');
-        return;
-      }
 
-      const localUri = `${downloadDir}${fullFileName}`;
+      // Check if file is already local (starts with file:// or is a local path)
+      const isLocalFile = sourcePath.startsWith('file://') || 
+                         sourcePath.startsWith('/') || 
+                         !sourcePath.startsWith('http://') && !sourcePath.startsWith('https://');
 
-      // Download the file
-      const downloadResult = await FileSystem.downloadAsync(sourcePath, localUri);
-      
-      if (downloadResult.status === 200) {
-        // Check if sharing is available
-        const isAvailable = await Sharing.isAvailableAsync();
-        
-        if (isAvailable) {
-          // Use native share sheet which allows saving
-          await Sharing.shareAsync(downloadResult.uri, {
-            mimeType: will.will_type === 'document' 
-              ? 'application/pdf' 
-              : will.will_type === 'video' 
-              ? 'video/mp4' 
-              : 'audio/m4a',
-            dialogTitle: `Download ${fullFileName}`,
-          });
-        } else {
-          // Fallback: Show success message with file location
-          Alert.alert(
-            'Download Complete',
-            `File saved to: ${localUri}\n\nYou can access it from your device's file manager.`,
-            [{ text: 'OK' }]
-          );
+      let fileUri: string;
+
+      if (isLocalFile) {
+        // File is already local, check if it exists
+        try {
+          const fileInfo = await FileSystemLegacy.getInfoAsync(sourcePath);
+          if (!fileInfo.exists) {
+            Alert.alert('Error', 'File not found. It may have been moved or deleted.');
+            return;
+          }
+          fileUri = sourcePath;
+        } catch (error) {
+          console.error('Error checking local file:', error);
+          Alert.alert('Error', 'Unable to access the file.');
+          return;
         }
       } else {
-        throw new Error('Download failed');
+        // File is remote, download it
+        try {
+          // Get cache directory
+          const fs = FileSystem as any;
+          const cacheDir = fs.cacheDirectory || fs.documentDirectory;
+          
+          if (!cacheDir) {
+            Alert.alert('Error', 'Unable to access file system cache.');
+            return;
+          }
+
+          const localUri = `${cacheDir}${fullFileName}`;
+          
+          // Download the file using legacy API
+          const downloadResult = await FileSystemLegacy.downloadAsync(sourcePath, localUri);
+          
+          if (downloadResult.status !== 200) {
+            throw new Error(`Download failed with status ${downloadResult.status}`);
+          }
+          
+          fileUri = downloadResult.uri;
+        } catch (error: any) {
+          console.error('Error downloading file:', error);
+          Alert.alert('Error', error.message || 'Failed to download the file.');
+          return;
+        }
+      }
+
+      // Share the file using native share sheet
+      const isAvailable = await Sharing.isAvailableAsync();
+      
+      if (isAvailable) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: will.will_type === 'document' 
+            ? 'application/pdf' 
+            : will.will_type === 'video' 
+            ? 'video/mp4' 
+            : 'audio/m4a',
+          dialogTitle: `Save ${fullFileName}`,
+        });
+      } else {
+        Alert.alert(
+          'Download Complete',
+          `File is ready: ${fullFileName}\n\nSharing is not available on this device.`,
+          [{ text: 'OK' }]
+        );
       }
     } catch (error: any) {
       console.error('Error downloading will:', error);
@@ -426,7 +449,6 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
         const extension = asset.name?.split('.').pop() || 'pdf';
         setSelectedFile({ ...asset, name: `${willName}.${extension}` });
         setUploadType('file');
-        setAiDraftUri(null);
         setSelectedVideo(null);
         setSelectedAudio(null);
       }
@@ -456,7 +478,6 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
         setUploadType('video');
         setSelectedFile(null);
         setSelectedAudio(null);
-        setAiDraftUri(null);
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to pick video');
@@ -484,7 +505,6 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
         setUploadType('video');
         setSelectedFile(null);
         setSelectedAudio(null);
-        setAiDraftUri(null);
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to record video');
@@ -572,7 +592,6 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
         setUploadType('audio');
         setSelectedFile(null);
         setSelectedVideo(null);
-        setAiDraftUri(null);
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to pick audio file');
@@ -605,7 +624,6 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
         setSelectedVideo(null);
         setSelectedAudio(null);
         setUploadType(null);
-        setAiDraftUri(null);
     } else if (uploadType === 'video' && selectedVideo) {
         const willName = selectedVideo.fileName || generateWillName();
       // TODO: Upload video to Firebase Storage
@@ -625,7 +643,6 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
         setSelectedFile(null);
         setSelectedAudio(null);
         setUploadType(null);
-        setAiDraftUri(null);
       } else if (uploadType === 'audio' && selectedAudio) {
         const willName = selectedAudio.name || generateWillName();
         // TODO: Upload audio to Firebase Storage
@@ -645,7 +662,6 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
         setSelectedFile(null);
         setSelectedVideo(null);
         setUploadType(null);
-        setAiDraftUri(null);
     } else {
         Alert.alert('Error', 'Please select a file, video, or audio');
       }
