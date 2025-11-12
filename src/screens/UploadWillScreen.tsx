@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,12 +10,15 @@ import {
   Alert,
   TextInput,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import { Platform } from 'react-native';
 import { theme } from '../config/theme.config';
 import { useAuth } from '../contexts/AuthContext';
 import WillService from '../services/willService';
@@ -56,6 +59,7 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiDraftUri, setAiDraftUri] = useState<string | null>(null);
   const [previewWill, setPreviewWill] = useState<WillInformation | null>(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const loadExistingWills = useCallback(async () => {
     if (!currentUser) return;
@@ -208,8 +212,14 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
     }
   };
 
+  const generateWillName = (): string => {
+    const totalCount = existingWills.length;
+    return `MiWill ${totalCount + 1}`;
+  };
+
   const getWillDisplayName = (will: WillInformation) => {
     if (will.will_document_name) return will.will_document_name;
+    if (will.will_title) return will.will_title;
     const path =
       will.document_path || will.video_path || will.audio_path || will.will_document_url;
     if (!path) return 'Untitled Will';
@@ -259,6 +269,75 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
     return date.toLocaleString();
   };
 
+  const handleDownloadWill = async (will: WillInformation) => {
+    try {
+      const sourcePath = getWillSourcePath(will);
+      if (!sourcePath) {
+        Alert.alert('Error', 'No file path available for this will.');
+        return;
+      }
+
+      const fileName = getWillDisplayName(will);
+      const fileExtension = will.will_type === 'document' 
+        ? (sourcePath.split('.').pop() || 'pdf')
+        : will.will_type === 'video' 
+        ? 'mp4' 
+        : 'm4a';
+      
+      const fullFileName = fileName.includes('.') ? fileName : `${fileName}.${fileExtension}`;
+      
+      // Determine download directory based on platform
+      let downloadDir: string | null = null;
+      try {
+        const fs = FileSystem as any;
+        downloadDir = Platform.OS === 'ios' 
+          ? (fs.documentDirectory || fs.cacheDirectory)
+          : (fs.cacheDirectory || fs.documentDirectory);
+      } catch (error) {
+        console.error('Error accessing file system:', error);
+      }
+      
+      if (!downloadDir) {
+        Alert.alert('Error', 'Unable to access file system.');
+        return;
+      }
+
+      const localUri = `${downloadDir}${fullFileName}`;
+
+      // Download the file
+      const downloadResult = await FileSystem.downloadAsync(sourcePath, localUri);
+      
+      if (downloadResult.status === 200) {
+        // Check if sharing is available
+        const isAvailable = await Sharing.isAvailableAsync();
+        
+        if (isAvailable) {
+          // Use native share sheet which allows saving
+          await Sharing.shareAsync(downloadResult.uri, {
+            mimeType: will.will_type === 'document' 
+              ? 'application/pdf' 
+              : will.will_type === 'video' 
+              ? 'video/mp4' 
+              : 'audio/m4a',
+            dialogTitle: `Download ${fullFileName}`,
+          });
+        } else {
+          // Fallback: Show success message with file location
+          Alert.alert(
+            'Download Complete',
+            `File saved to: ${localUri}\n\nYou can access it from your device's file manager.`,
+            [{ text: 'OK' }]
+          );
+        }
+      } else {
+        throw new Error('Download failed');
+      }
+    } catch (error: any) {
+      console.error('Error downloading will:', error);
+      Alert.alert('Error', error.message || 'Failed to download the will file.');
+    }
+  };
+
   const handleDeleteExistingWill = (will: WillInformation) => {
     Alert.alert(
       'Delete Will',
@@ -289,26 +368,35 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
 
   const renderExistingWillCard = (will: WillInformation) => (
     <View key={will.will_id} style={styles.existingWillCard}>
-      <View style={styles.existingWillIcon}>
-        <Ionicons name={getWillTypeIcon(will)} size={28} color={theme.colors.primary} />
-      </View>
-      <View style={styles.existingWillInfo}>
-        <Text style={styles.existingWillName}>{getWillDisplayName(will)}</Text>
-        <Text style={styles.existingWillMeta}>
-          Type: {will.will_type.charAt(0).toUpperCase() + will.will_type.slice(1)}
-        </Text>
-        <Text style={styles.existingWillMeta}>
-          Updated: {formatTimestamp(will.last_updated)}
-        </Text>
+      <TouchableOpacity
+        style={styles.existingWillDownloadIcon}
+        onPress={() => handleDownloadWill(will)}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="download-outline" size={22} color={theme.colors.primary} />
+      </TouchableOpacity>
+      <View style={styles.existingWillHeader}>
+        <View style={styles.existingWillIcon}>
+          <Ionicons name={getWillTypeIcon(will)} size={28} color={theme.colors.primary} />
+        </View>
+        <View style={styles.existingWillInfo}>
+          <Text style={styles.existingWillName}>{getWillDisplayName(will)}</Text>
+          <Text style={styles.existingWillMeta}>
+            Type: {will.will_type.charAt(0).toUpperCase() + will.will_type.slice(1)}
+          </Text>
+          <Text style={styles.existingWillMeta}>
+            Updated: {formatTimestamp(will.last_updated)}
+          </Text>
+        </View>
       </View>
       <View style={styles.existingWillActions}>
-          <TouchableOpacity
-            style={styles.existingWillActionButton}
-            onPress={() => handleOpenExistingWill(will)}
-          >
-            <Ionicons name="open-outline" size={20} color={theme.colors.buttonText} />
-            <Text style={styles.existingWillActionText}>Preview</Text>
-          </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.existingWillActionButton}
+          onPress={() => handleOpenExistingWill(will)}
+        >
+          <Ionicons name="open-outline" size={20} color={theme.colors.buttonText} />
+          <Text style={styles.existingWillActionText}>Preview</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={[styles.existingWillActionButton, styles.existingWillDeleteButton]}
           onPress={() => handleDeleteExistingWill(will)}
@@ -333,7 +421,10 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setSelectedFile(result.assets[0]);
+        const asset = result.assets[0];
+        const willName = generateWillName();
+        const extension = asset.name?.split('.').pop() || 'pdf';
+        setSelectedFile({ ...asset, name: `${willName}.${extension}` });
         setUploadType('file');
         setAiDraftUri(null);
         setSelectedVideo(null);
@@ -359,7 +450,9 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setSelectedVideo(result.assets[0]);
+        const asset = result.assets[0];
+        const willName = generateWillName();
+        setSelectedVideo({ ...asset, fileName: `${willName}.mp4` });
         setUploadType('video');
         setSelectedFile(null);
         setSelectedAudio(null);
@@ -385,7 +478,9 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setSelectedVideo(result.assets[0]);
+        const asset = result.assets[0];
+        const willName = generateWillName();
+        setSelectedVideo({ ...asset, fileName: `${willName}.mp4` });
         setUploadType('video');
         setSelectedFile(null);
         setSelectedAudio(null);
@@ -395,6 +490,29 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       Alert.alert('Error', 'Failed to record video');
     }
   };
+
+  useEffect(() => {
+    if (isRecording) {
+      // Start pulsing animation
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.5,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      // Stop animation
+      pulseAnim.setValue(1);
+    }
+  }, [isRecording, pulseAnim]);
 
   const startRecordingAudio = async () => {
     try {
@@ -428,8 +546,9 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       setIsRecording(false);
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
+      const willName = generateWillName();
       
-      setSelectedAudio({ uri, name: 'audio_will.m4a' });
+      setSelectedAudio({ uri, name: `${willName}.m4a` });
       setUploadType('audio');
       setRecording(null);
     } catch (error) {
@@ -446,7 +565,10 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setSelectedAudio(result.assets[0]);
+        const asset = result.assets[0];
+        const willName = generateWillName();
+        const extension = asset.name?.split('.').pop() || 'm4a';
+        setSelectedAudio({ ...asset, name: `${willName}.${extension}` });
         setUploadType('audio');
         setSelectedFile(null);
         setSelectedVideo(null);
@@ -464,34 +586,40 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
     }
 
     try {
-      if (uploadType === 'file' && selectedFile) {
-        // TODO: Upload file to Firebase Storage
+    if (uploadType === 'file' && selectedFile) {
+        const willName = selectedFile.name || generateWillName();
+      // TODO: Upload file to Firebase Storage
         await WillService.createWill({
           user_id: currentUser.uid,
           will_type: 'document',
           document_path: selectedFile.uri,
+          will_document_name: willName,
+          will_title: willName,
           status: 'active',
           is_verified: false,
           last_updated: new Date(),
         });
-        Alert.alert('Success', 'Will document uploaded successfully');
+      Alert.alert('Success', 'Will document uploaded successfully');
         await loadExistingWills();
         setSelectedFile(null);
         setSelectedVideo(null);
         setSelectedAudio(null);
         setUploadType(null);
         setAiDraftUri(null);
-      } else if (uploadType === 'video' && selectedVideo) {
-        // TODO: Upload video to Firebase Storage
+    } else if (uploadType === 'video' && selectedVideo) {
+        const willName = selectedVideo.fileName || generateWillName();
+      // TODO: Upload video to Firebase Storage
         await WillService.createWill({
           user_id: currentUser.uid,
           will_type: 'video',
           video_path: selectedVideo.uri,
+          will_document_name: willName,
+          will_title: willName,
           status: 'active',
           is_verified: false,
           last_updated: new Date(),
         });
-        Alert.alert('Success', 'Will video uploaded successfully');
+      Alert.alert('Success', 'Will video uploaded successfully');
         await loadExistingWills();
         setSelectedVideo(null);
         setSelectedFile(null);
@@ -499,11 +627,14 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
         setUploadType(null);
         setAiDraftUri(null);
       } else if (uploadType === 'audio' && selectedAudio) {
+        const willName = selectedAudio.name || generateWillName();
         // TODO: Upload audio to Firebase Storage
         await WillService.createWill({
           user_id: currentUser.uid,
           will_type: 'audio',
           audio_path: selectedAudio.uri,
+          will_document_name: willName,
+          will_title: willName,
           status: 'active',
           is_verified: false,
           last_updated: new Date(),
@@ -515,7 +646,7 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
         setSelectedVideo(null);
         setUploadType(null);
         setAiDraftUri(null);
-      } else {
+    } else {
         Alert.alert('Error', 'Please select a file, video, or audio');
       }
     } catch (error: any) {
@@ -524,19 +655,19 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
   };
 
   const renderMainContent = () => (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Upload Will</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Upload Will</Text>
+          <View style={{ width: 24 }} />
+        </View>
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={styles.title}>How would you like to upload your will?</Text>
           <View style={styles.iconContainer}>
             <Ionicons name="document-text-outline" size={60} color={theme.colors.primary} />
@@ -606,19 +737,33 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
             style={[styles.optionButton, isRecording && styles.optionButtonActive]} 
             onPress={isRecording ? stopRecordingAudio : startRecordingAudio}
           >
-            <Ionicons 
-              name={isRecording ? "stop-circle" : "mic-outline"} 
-              size={40} 
-              color={isRecording ? theme.colors.error : theme.colors.primary} 
-            />
+            <View style={styles.recordingContainer}>
+              <Ionicons 
+                name={isRecording ? "stop-circle" : "mic-outline"} 
+                size={40} 
+                color={isRecording ? theme.colors.error : theme.colors.primary} 
+              />
+              {isRecording && (
+                <Animated.View 
+                  style={[
+                    styles.recordingIndicator,
+                    {
+                      transform: [{ scale: pulseAnim }],
+                    },
+                  ]}
+                >
+                  <View style={styles.recordingPulse} />
+                </Animated.View>
+              )}
+            </View>
             <Text style={styles.optionText}>
               {isRecording ? 'Stop Recording' : 'Record Audio'}
             </Text>
             <Text style={styles.optionSubtext}>
-              {isRecording ? 'Tap to stop' : 'Record your will'}
+              {isRecording ? 'Recording in progress...' : 'Record your will'}
             </Text>
             {selectedAudio && !isRecording && uploadType === 'audio' && (
-              <Text style={styles.selectedFile}>Audio recorded</Text>
+              <Text style={styles.selectedFile}>{selectedAudio.name || 'Audio recorded'}</Text>
             )}
           </TouchableOpacity>
 
@@ -634,23 +779,23 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
               </Text>
             </View>
           )}
-      </ScrollView>
+        </ScrollView>
 
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={[
-            styles.saveButton,
+        <View style={styles.footer}>
+          <TouchableOpacity
+            style={[
+              styles.saveButton,
             (!selectedFile && !selectedVideo && !selectedAudio) && styles.saveButtonDisabled,
-          ]}
-          onPress={handleSave}
+            ]}
+            onPress={handleSave}
           disabled={!selectedFile && !selectedVideo && !selectedAudio || isRecording}
-        >
+          >
           <Text style={styles.saveButtonText}>
             {hasExistingWill ? 'Update Will' : 'Upload Will'}
           </Text>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
   );
 
   return (
@@ -893,14 +1038,25 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
   },
   existingWillCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.lg,
     padding: theme.spacing.md,
     marginBottom: theme.spacing.sm,
     backgroundColor: theme.colors.surface,
+    position: 'relative',
+  },
+  existingWillDownloadIcon: {
+    position: 'absolute',
+    top: theme.spacing.md,
+    right: theme.spacing.md,
+    zIndex: 10,
+    padding: theme.spacing.xs,
+  },
+  existingWillHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: theme.spacing.md,
   },
   existingWillIcon: {
     width: 48,
@@ -926,19 +1082,20 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.xs / 1.5,
   },
   existingWillActions: {
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    marginLeft: theme.spacing.md,
-    gap: theme.spacing.xs,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.xs,
   },
   existingWillActionButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: theme.colors.buttonPrimary,
     borderRadius: theme.borderRadius.lg,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.sm,
   },
   existingWillDeleteButton: {
     backgroundColor: theme.colors.error,
@@ -948,6 +1105,29 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.sm,
     fontWeight: theme.typography.weights.semibold as any,
     marginLeft: theme.spacing.xs / 1.2,
+  },
+  recordingContainer: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingIndicator: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: theme.colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recordingPulse: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: theme.colors.error,
+    opacity: 0.6,
   },
   selectedFile: {
     fontSize: theme.typography.sizes.sm,
