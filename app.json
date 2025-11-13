@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "MiWill",
+    "name": "Mi Will",
     "slug": "miwill-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    
+    "icon": "./assets/appstorelogo.png",
     "userInterfaceStyle": "light",
     
     "assetBundlePatterns": [
@@ -12,8 +12,9 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.miwill.app",
-      "buildNumber": "1"
+      "bundleIdentifier": "com.xsparkdev.miwill",
+      "buildNumber": "1",
+      "icon": "./assets/appstorelogo.png"
     },
     "android": {
       "package": "com.miwill.app",
