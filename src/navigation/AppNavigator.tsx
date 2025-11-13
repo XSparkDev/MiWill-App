@@ -10,6 +10,18 @@ import AddBeneficiaryScreen from '../screens/AddBeneficiaryScreen';
 import UploadWillScreen from '../screens/UploadWillScreen';
 import UpdateProfileScreen from '../screens/UpdateProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import AccountSettingsScreen from '../screens/AccountSettingsScreen';
+import DocumentsContactsScreen from '../screens/DocumentsContactsScreen';
+import SecurityPrivacyScreen from '../screens/SecurityPrivacyScreen';
+import SupportScreen from '../screens/SupportScreen';
+import AboutScreen from '../screens/AboutScreen';
+import NotificationPreferencesScreen from '../screens/NotificationPreferencesScreen';
+import VerificationHistoryScreen from '../screens/VerificationHistoryScreen';
+import ExecutorContactsScreen from '../screens/ExecutorContactsScreen';
+import PrivacySettingsScreen from '../screens/PrivacySettingsScreen';
+import TwoFactorSettingsScreen from '../screens/TwoFactorSettingsScreen';
+import TermsConditionsScreen from '../screens/TermsConditionsScreen';
+import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -22,6 +34,18 @@ export type RootStackParamList = {
   UploadWill: undefined;
   UpdateProfile: undefined;
   Settings: undefined;
+  AccountSettings: undefined;
+  DocumentsContacts: undefined;
+  SecurityPrivacy: undefined;
+  Support: undefined;
+  About: undefined;
+  NotificationPreferences: undefined;
+  VerificationHistory: undefined;
+  ExecutorContacts: undefined;
+  PrivacySettings: undefined;
+  TwoFactorSettings: undefined;
+  TermsConditions: undefined;
+  PrivacyPolicy: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -43,6 +67,18 @@ const AppNavigator: React.FC = () => {
       <Stack.Screen name="UploadWill" component={UploadWillScreen} />
       <Stack.Screen name="UpdateProfile" component={UpdateProfileScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
+      <Stack.Screen name="DocumentsContacts" component={DocumentsContactsScreen} />
+      <Stack.Screen name="SecurityPrivacy" component={SecurityPrivacyScreen} />
+      <Stack.Screen name="Support" component={SupportScreen} />
+      <Stack.Screen name="About" component={AboutScreen} />
+      <Stack.Screen name="NotificationPreferences" component={NotificationPreferencesScreen} />
+      <Stack.Screen name="VerificationHistory" component={VerificationHistoryScreen} />
+      <Stack.Screen name="ExecutorContacts" component={ExecutorContactsScreen} />
+      <Stack.Screen name="PrivacySettings" component={PrivacySettingsScreen} />
+      <Stack.Screen name="TwoFactorSettings" component={TwoFactorSettingsScreen} />
+      <Stack.Screen name="TermsConditions" component={TermsConditionsScreen} />
+      <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
     </Stack.Navigator>
   );
 };

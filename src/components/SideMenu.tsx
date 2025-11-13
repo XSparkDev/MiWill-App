@@ -22,50 +22,50 @@ const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, navigation }) => 
     {
       id: 'settings',
       icon: 'settings-outline',
-      label: 'Settings',
+      label: 'Settings Overview',
       screen: 'Settings',
     },
     {
-      id: 'notifications',
-      icon: 'notifications-outline',
-      label: 'Notification Preferences',
-      screen: 'Settings',
+      id: 'dashboard',
+      icon: 'home-outline',
+      label: 'Dashboard',
+      screen: 'Dashboard',
     },
     {
-      id: 'verification',
-      icon: 'checkmark-circle-outline',
-      label: 'Verification History',
-      screen: 'Settings',
+      id: 'add-asset',
+      icon: 'business-outline',
+      label: 'Add an Asset',
+      screen: 'AddAsset',
     },
     {
-      id: 'documents',
-      icon: 'document-text-outline',
-      label: 'My Documents',
-      screen: 'Settings',
+      id: 'add-policy',
+      icon: 'shield-half-outline',
+      label: 'Add a Policy',
+      screen: 'AddPolicy',
     },
     {
-      id: 'executor',
-      icon: 'people-outline',
-      label: 'Executor & Contacts',
-      screen: 'Settings',
+      id: 'add-beneficiary',
+      icon: 'person-add-outline',
+      label: 'Add Beneficiary',
+      screen: 'AddBeneficiary',
     },
     {
-      id: 'security',
-      icon: 'lock-closed-outline',
-      label: 'Security & Privacy',
-      screen: 'Settings',
+      id: 'upload-will',
+      icon: 'cloud-upload-outline',
+      label: 'Upload or edit Will',
+      screen: 'UploadWill',
     },
     {
-      id: 'help',
-      icon: 'help-circle-outline',
+      id: 'account-settings',
+      icon: 'settings-outline',
+      label: 'Account Settings',
+      screen: 'AccountSettings',
+    },
+    {
+      id: 'support',
+      icon: 'help-buoy-outline',
       label: 'Help & Support',
-      screen: 'Settings',
-    },
-    {
-      id: 'about',
-      icon: 'information-circle-outline',
-      label: 'About MiWill',
-      screen: 'Settings',
+      screen: 'Support',
     },
   ];
 
@@ -92,6 +92,16 @@ const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, navigation }) => 
             </View>
 
             <ScrollView style={styles.menuContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.summaryCard}>
+                <Ionicons name="bulb-outline" size={24} color={theme.colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.summaryTitle}>Quick reminders</Text>
+                  <Text style={styles.summaryBody}>
+                    Review beneficiaries yearly and upload a signed copy of your latest will.
+                  </Text>
+                </View>
+              </View>
+
               {menuItems.map((item) => (
                 <TouchableOpacity
                   key={item.id}
@@ -151,6 +161,33 @@ const styles = StyleSheet.create({
   },
   menuContent: {
     flex: 1,
+  },
+  summaryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+    marginHorizontal: theme.spacing.xl,
+    marginTop: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xl,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  summaryTitle: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+  },
+  summaryBody: {
+    marginTop: theme.spacing.xs,
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: 18,
   },
   menuItem: {
     flexDirection: 'row',
