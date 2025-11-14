@@ -122,6 +122,8 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
   const [showMiWillExecutorModal, setShowMiWillExecutorModal] = useState(false);
   const [showAttorneyTermsModal, setShowAttorneyTermsModal] = useState(false);
   const [showExecutorTermsModal, setShowExecutorTermsModal] = useState(false);
+  const [returnToAttorneyConsent, setReturnToAttorneyConsent] = useState(false);
+  const [returnToExecutorConsent, setReturnToExecutorConsent] = useState(false);
   const [showAttorneyInfoModal, setShowAttorneyInfoModal] = useState(false);
   const [showExecutorInfoModal, setShowExecutorInfoModal] = useState(false);
 
@@ -486,6 +488,22 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
       Alert.alert('Registration Failed', errorMessage, [
         { text: 'OK' }
       ]);
+    }
+  };
+
+  const closeAttorneyTermsModal = () => {
+    setShowAttorneyTermsModal(false);
+    if (returnToAttorneyConsent) {
+      setShowMiWillAttorneyModal(true);
+      setReturnToAttorneyConsent(false);
+    }
+  };
+
+  const closeExecutorTermsModal = () => {
+    setShowExecutorTermsModal(false);
+    if (returnToExecutorConsent) {
+      setShowMiWillExecutorModal(true);
+      setReturnToExecutorConsent(false);
     }
   };
 
@@ -1367,12 +1385,18 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                   {formData.miWillAttorneyAccepted && <Text style={styles.checkmark}>✓</Text>}
                 </View>
               </TouchableOpacity>
-              <Text style={styles.checkboxText}>
-                I will use MiWill Partner attorneys{' '}
-                <Text style={styles.termsLink} onPress={() => setShowAttorneyTermsModal(true)}>
-                  (Terms)
-                </Text>
-              </Text>
+              <View style={styles.checkboxTextRow}>
+                <Text style={styles.checkboxText}>I will use MiWill Partner attorneys</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setReturnToAttorneyConsent(true);
+                    setShowMiWillAttorneyModal(false);
+                    setShowAttorneyTermsModal(true);
+                  }}
+                >
+                  <Text style={styles.termsLink}>(Terms)</Text>
+                </TouchableOpacity>
+              </View>
             </View>
             <TouchableOpacity
               style={[
@@ -1381,6 +1405,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               ]}
               onPress={() => {
                 if (formData.miWillAttorneyAccepted) {
+                  setReturnToAttorneyConsent(false);
                   setShowMiWillAttorneyModal(false);
                   nextStep();
                 }
@@ -1392,6 +1417,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             <TouchableOpacity
               style={styles.modalBackButton}
               onPress={() => {
+                setReturnToAttorneyConsent(false);
                 setShowMiWillAttorneyModal(false);
                 updateFormData('hasOwnAttorney', null);
                 updateFormData('miWillAttorneyAccepted', false);
@@ -1425,12 +1451,18 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                   {formData.miWillExecutorAccepted && <Text style={styles.checkmark}>✓</Text>}
                 </View>
               </TouchableOpacity>
-              <Text style={styles.checkboxText}>
-                I will use MiWill Executors{' '}
-                <Text style={styles.termsLink} onPress={() => setShowExecutorTermsModal(true)}>
-                  (Terms)
-                </Text>
-              </Text>
+              <View style={styles.checkboxTextRow}>
+                <Text style={styles.checkboxText}>I will use MiWill Executors</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setReturnToExecutorConsent(true);
+                    setShowMiWillExecutorModal(false);
+                    setShowExecutorTermsModal(true);
+                  }}
+                >
+                  <Text style={styles.termsLink}>(Terms)</Text>
+                </TouchableOpacity>
+              </View>
             </View>
             <TouchableOpacity
               style={[
@@ -1439,6 +1471,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               ]}
               onPress={() => {
                 if (formData.miWillExecutorAccepted) {
+                  setReturnToExecutorConsent(false);
                   setShowMiWillExecutorModal(false);
                   nextStep();
                 }
@@ -1450,6 +1483,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             <TouchableOpacity
               style={styles.modalBackButton}
               onPress={() => {
+                setReturnToExecutorConsent(false);
                 setShowMiWillExecutorModal(false);
                 updateFormData('hasOwnExecutor', null);
                 updateFormData('miWillExecutorAccepted', false);
@@ -1466,7 +1500,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         visible={showAttorneyTermsModal}
         animationType="slide"
         transparent
-        onRequestClose={() => setShowAttorneyTermsModal(false)}
+        onRequestClose={closeAttorneyTermsModal}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -1490,7 +1524,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             </ScrollView>
             <TouchableOpacity
               style={styles.modalCloseButton}
-              onPress={() => setShowAttorneyTermsModal(false)}
+              onPress={closeAttorneyTermsModal}
             >
               <Text style={styles.modalCloseText}>Close</Text>
             </TouchableOpacity>
@@ -1503,7 +1537,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         visible={showExecutorTermsModal}
         animationType="slide"
         transparent
-        onRequestClose={() => setShowExecutorTermsModal(false)}
+        onRequestClose={closeExecutorTermsModal}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -1527,7 +1561,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             </ScrollView>
             <TouchableOpacity
               style={styles.modalCloseButton}
-              onPress={() => setShowExecutorTermsModal(false)}
+              onPress={closeExecutorTermsModal}
             >
               <Text style={styles.modalCloseText}>Close</Text>
             </TouchableOpacity>
@@ -2087,6 +2121,13 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.text,
     lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+  },
+  checkboxTextRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    flexWrap: 'wrap',
   },
   termsLink: {
     color: theme.colors.primary,
