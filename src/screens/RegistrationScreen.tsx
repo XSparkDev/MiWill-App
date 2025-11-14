@@ -1525,6 +1525,16 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 By accepting, you authorise MiWill to assign an executor under these terms.
               </Text>
             </ScrollView>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowExecutorTermsModal(false)}
+            >
+              <Text style={styles.modalCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Attorney Info Modal */}
       <Modal
         visible={showAttorneyInfoModal}
@@ -1571,15 +1581,6 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             <TouchableOpacity
               style={styles.modalCloseButton}
               onPress={() => setShowExecutorInfoModal(false)}
-            >
-              <Text style={styles.modalCloseText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={() => setShowExecutorTermsModal(false)}
             >
               <Text style={styles.modalCloseText}>Close</Text>
             </TouchableOpacity>
