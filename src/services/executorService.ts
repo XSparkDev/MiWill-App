@@ -7,7 +7,6 @@ import {
   updateDoc,
   query,
   where,
-  orderBy,
   Timestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -39,12 +38,13 @@ export class ExecutorService {
     try {
       const q = query(
         collection(db, this.collection),
-        where('user_id', '==', userId),
-        orderBy('created_at', 'desc')
+        where('user_id', '==', userId)
       );
       const querySnapshot = await getDocs(q);
       
-      return querySnapshot.docs.map(doc => this.mapExecutorData(doc.data()));
+      return querySnapshot.docs
+        .map(doc => this.mapExecutorData(doc.data()))
+        .sort((a, b) => (b.created_at?.getTime?.() || 0) - (a.created_at?.getTime?.() || 0));
     } catch (error: any) {
       throw new Error(`Failed to get user executors: ${error.message}`);
     }

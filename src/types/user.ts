@@ -1,4 +1,4 @@
-export type NotificationFrequency = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'custom_days';
+export type NotificationFrequency = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom_days';
 
 export interface UserProfile {
   user_id: string;

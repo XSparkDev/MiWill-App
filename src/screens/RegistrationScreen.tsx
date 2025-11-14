@@ -15,6 +15,7 @@ import {
   Alert,
   Linking,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
@@ -124,6 +125,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
   const [showExecutorTermsModal, setShowExecutorTermsModal] = useState(false);
   const [returnToAttorneyConsent, setReturnToAttorneyConsent] = useState(false);
   const [returnToExecutorConsent, setReturnToExecutorConsent] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
   const [showAttorneyInfoModal, setShowAttorneyInfoModal] = useState(false);
   const [showExecutorInfoModal, setShowExecutorInfoModal] = useState(false);
 
@@ -375,13 +377,17 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         ]).start();
       });
     } else {
-      // Complete registration
-      handleCompleteRegistration();
+      if (!isCompleting) {
+        // Complete registration
+        handleCompleteRegistration();
+      }
     }
   };
 
   const handleCompleteRegistration = async () => {
+    if (isCompleting) return;
     try {
+      setIsCompleting(true);
       // 1) Create auth account
       const cred = await AuthService.register(formData.email.trim(), formData.password);
       const uid = cred.user.uid;
@@ -488,6 +494,8 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
       Alert.alert('Registration Failed', errorMessage, [
         { text: 'OK' }
       ]);
+    } finally {
+      setIsCompleting(false);
     }
   };
 
@@ -1336,17 +1344,24 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               style={[
                 styles.nextButton,
                 styles.nextButtonFull,
-                !isStepValid() && styles.nextButtonDisabled
+                (!isStepValid() || (currentStep === totalSteps - 1 && isCompleting)) && styles.nextButtonDisabled
               ]}
               onPress={nextStep}
-              disabled={!isStepValid()}
+              disabled={!isStepValid() || (currentStep === totalSteps - 1 && isCompleting)}
             >
-              <Text style={[
-                styles.nextButtonText,
-                !isStepValid() && styles.nextButtonTextDisabled
-              ]}>
-                {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
-              </Text>
+              {currentStep === totalSteps - 1 && isCompleting ? (
+                <View style={styles.nextButtonLoading}>
+                  <ActivityIndicator size="small" color={theme.colors.buttonText} />
+                  <Text style={styles.nextButtonLoadingText}>Completing...</Text>
+                </View>
+              ) : (
+                <Text style={[
+                  styles.nextButtonText,
+                  !isStepValid() && styles.nextButtonTextDisabled
+                ]}>
+                  {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -2038,6 +2053,17 @@ const styles = StyleSheet.create({
   },
   nextButtonText: {
     fontSize: theme.typography.sizes.lg,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.buttonText,
+  },
+  nextButtonLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+  },
+  nextButtonLoadingText: {
+    fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.semibold as any,
     color: theme.colors.buttonText,
   },

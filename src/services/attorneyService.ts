@@ -7,7 +7,6 @@ import {
   updateDoc,
   query,
   where,
-  orderBy,
   Timestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -17,13 +16,12 @@ export class AttorneyService {
   private static collection = 'attorneys';
 
   static async getUserAttorneys(userId: string): Promise<AttorneyInformation[]> {
-    const q = query(
-      collection(db, this.collection),
-      where('user_id', '==', userId),
-      orderBy('created_at', 'desc')
-    );
+    const q = query(collection(db, this.collection), where('user_id', '==', userId));
     const snap = await getDocs(q);
-    return snap.docs.map((d) => this.map(d.data()));
+    return snap
+      .docs
+      .map((d) => this.map(d.data()))
+      .sort((a, b) => (b.created_at?.getTime?.() || 0) - (a.created_at?.getTime?.() || 0));
   }
 
   static async createAttorney(

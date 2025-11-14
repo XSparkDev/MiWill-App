@@ -44,9 +44,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   useEffect(() => {
     const checkUserPopia = async () => {
       const trimmedEmail = email.trim();
+      const normalizedEmail = trimmedEmail.toLowerCase();
       
       // Only check if email is valid and different from last checked
-      if (!trimmedEmail || !isValidEmail(trimmedEmail) || trimmedEmail === lastCheckedEmailRef.current || checkingPopiaRef.current) {
+      if (
+        !trimmedEmail ||
+        !isValidEmail(trimmedEmail) ||
+        normalizedEmail === lastCheckedEmailRef.current ||
+        checkingPopiaRef.current
+      ) {
         return;
       }
       
@@ -56,24 +62,36 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         console.log('[LoginScreen] Checking POPIA for email:', trimmedEmail);
         
         // First, check AsyncStorage cache for this email
-        const cacheKey = `popia_${trimmedEmail.toLowerCase()}`;
+        const cacheKey = `popia_${normalizedEmail}`;
         const cachedPopia = await AsyncStorage.getItem(cacheKey);
         
         if (cachedPopia === 'true') {
           console.log('[LoginScreen] Found cached POPIA acceptance');
           setPopiaAccepted(true);
-          lastCheckedEmailRef.current = trimmedEmail;
+          lastCheckedEmailRef.current = normalizedEmail;
           checkingPopiaRef.current = false;
           return;
         }
         
         // Check if the email has sign-in methods (i.e., user exists)
-        const signInMethods = await fetchSignInMethodsForEmail(auth, trimmedEmail);
+        let signInMethods: string[] = [];
+        try {
+          signInMethods = await fetchSignInMethodsForEmail(auth, normalizedEmail);
+        } catch (fetchError: any) {
+          if (fetchError?.code === 'auth/invalid-email') {
+            console.log('[LoginScreen] Firebase reported invalid email, skipping POPIA check.');
+            setPopiaAccepted(false);
+            lastCheckedEmailRef.current = normalizedEmail;
+            checkingPopiaRef.current = false;
+            return;
+          }
+          throw fetchError;
+        }
         
         if (signInMethods.length === 0) {
           console.log('[LoginScreen] Email does not exist in system');
           setPopiaAccepted(false);
-          lastCheckedEmailRef.current = trimmedEmail;
+          lastCheckedEmailRef.current = normalizedEmail;
           checkingPopiaRef.current = false;
           return;
         }
@@ -82,12 +100,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         // Email exists but no cache - keep checkbox unchecked
         // User will need to check it manually, and we'll cache it after login
         setPopiaAccepted(false);
-        lastCheckedEmailRef.current = trimmedEmail;
+        lastCheckedEmailRef.current = normalizedEmail;
       } catch (err: any) {
         console.error('[LoginScreen] Error checking POPIA:', err);
         // Silently fail - user can still check manually
         setPopiaAccepted(false);
-        lastCheckedEmailRef.current = trimmedEmail;
+        lastCheckedEmailRef.current = normalizedEmail;
       } finally {
         checkingPopiaRef.current = false;
       }

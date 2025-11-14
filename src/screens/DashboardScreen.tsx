@@ -131,6 +131,29 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     }
   }, [currentUser]);
 
+  const getNextCheckInLabel = () => {
+    if (!userProfile) return 'Not scheduled';
+    const frequency = userProfile.notification_frequency;
+    const customDays = (userProfile as any).custom_frequency_days;
+
+    if (frequency === 'custom_days') {
+      if (customDays) {
+        return `Every ${customDays} day${customDays === 1 ? '' : 's'}`;
+      }
+      return 'Custom schedule';
+    }
+
+    const baseMap: Record<string, string> = {
+      daily: 'Every day',
+      weekly: 'Every 7 days',
+      monthly: 'Every 30 days',
+      quarterly: 'Every 90 days',
+      yearly: 'Every 365 days',
+    };
+
+    return baseMap[frequency as keyof typeof baseMap] || 'Not scheduled';
+  };
+
   const loadDashboardData = async () => {
     if (!currentUser) return;
 
@@ -893,7 +916,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               onPress={() => setShowNotificationModal(true)} 
               style={styles.notificationBellButton}
             >
-              <Ionicons name="notifications" size={24} color={theme.colors.primary} />
+              <Ionicons name="notifications" size={30} color={theme.colors.primary} />
               {(hasAttorneyNotification || hasExecutorNotification) && (
                 <View style={styles.notificationBadge} />
               )}
@@ -1044,7 +1067,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
             <View style={styles.statusRow}>
               <Text style={styles.statusLabel}>Next Check-in</Text>
-              <Text style={styles.statusValue}>In 7 days</Text>
+              <Text style={styles.statusValue}>{getNextCheckInLabel()}</Text>
             </View>
 
             <View style={styles.statusRow}>
@@ -1214,6 +1237,52 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
                 </View>
               ) : (
                 <>
+                  {hasExecutorNotification && (
+                    <View style={styles.notificationCard}>
+                      <View style={styles.notificationIconContainer}>
+                        <Ionicons name="information-circle" size={24} color={theme.colors.info} />
+                      </View>
+                      <View style={styles.notificationContent}>
+                        <Text style={styles.notificationTitle}>MiWill Executor Assigned</Text>
+                        <Text style={styles.notificationBody}>
+                          You have chosen to use MiWill Executors. If you would like to appoint your own executor, you can do so at any time.
+                        </Text>
+                        <View style={styles.notificationActions}>
+                          <TouchableOpacity
+                            style={styles.notificationButton}
+                            onPress={async () => {
+                              setShowNotificationModal(false);
+                              // Navigate to Update Executor screen
+                              navigation.navigate('UpdateExecutor');
+                            }}
+                          >
+                            <Text style={styles.notificationButtonText}>Appoint My Own Executor</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.notificationDismissButton}
+                            onPress={async () => {
+                              try {
+                                if (currentUser && userProfile) {
+                                  await UserService.updateUser(currentUser.uid, {
+                                    executor_notification_dismissed: true,
+                                  });
+                                  setHasExecutorNotification(false);
+                                  if (!hasAttorneyNotification) {
+                                    setShowNotificationModal(false);
+                                  }
+                                }
+                              } catch (error) {
+                                console.error('Error dismissing notification:', error);
+                              }
+                            }}
+                          >
+                            <Text style={styles.notificationDismissText}>Dismiss</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+
                   {hasAttorneyNotification && (
                     <View style={styles.notificationCard}>
                       <View style={styles.notificationIconContainer}>
@@ -1260,51 +1329,6 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
                     </View>
                   )}
 
-                  {hasExecutorNotification && (
-                    <View style={styles.notificationCard}>
-                      <View style={styles.notificationIconContainer}>
-                        <Ionicons name="information-circle" size={24} color={theme.colors.info} />
-                      </View>
-                      <View style={styles.notificationContent}>
-                        <Text style={styles.notificationTitle}>MiWill Executor Assigned</Text>
-                        <Text style={styles.notificationBody}>
-                          You have chosen to use MiWill Executors. If you would like to appoint your own executor, you can do so at any time.
-                        </Text>
-                        <View style={styles.notificationActions}>
-                          <TouchableOpacity
-                            style={styles.notificationButton}
-                            onPress={async () => {
-                              setShowNotificationModal(false);
-                              // Navigate to Update Executor screen
-                              navigation.navigate('UpdateExecutor');
-                            }}
-                          >
-                            <Text style={styles.notificationButtonText}>Appoint My Own Executor</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.notificationDismissButton}
-                            onPress={async () => {
-                              try {
-                                if (currentUser && userProfile) {
-                                  await UserService.updateUser(currentUser.uid, {
-                                    executor_notification_dismissed: true,
-                                  });
-                                  setHasExecutorNotification(false);
-                                  if (!hasAttorneyNotification) {
-                                    setShowNotificationModal(false);
-                                  }
-                                }
-                              } catch (error) {
-                                console.error('Error dismissing notification:', error);
-                              }
-                            }}
-                          >
-                            <Text style={styles.notificationDismissText}>Dismiss</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    </View>
-                  )}
                 </>
               )}
             </ScrollView>
