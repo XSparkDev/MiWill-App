@@ -2,9 +2,9 @@
 export const theme = {
   colors: {
     // Primary teal colors from MiWill brand (darker shade)
-    primary: '#5C9AAB', // Darker teal
-    primaryDark: '#3A7A6A',
-    primaryLight: '#5DBEAA',
+    primary: '#287587', // Darker teal
+    primaryDark: '#1F5C69',
+    primaryLight: '#3D8DA1',
     
     // Neutral colors
     secondary: '#7D8A96',
@@ -29,18 +29,18 @@ export const theme = {
     borderLight: '#F0F3F7',
     
     // Input colors
-    inputBorder: '#5C9AAB',
+    inputBorder: '#287587',
     inputBackground: '#FFFFFF',
-    inputFocus: '#5C9AAB',
+    inputFocus: '#287587',
     
     // Button colors
-    buttonPrimary: '#5C9AAB',
-    buttonPrimaryHover: '#3A7A6A',
+    buttonPrimary: '#287587',
+    buttonPrimaryHover: '#1F5C69',
     buttonSecondary: '#F0F3F7',
     buttonText: '#FFFFFF',
     
     // Shadow
-    shadow: 'rgba(93, 190, 170, 0.1)',
+    shadow: 'rgba(40, 117, 135, 0.1)',
   },
   spacing: {
     xs: 4,
@@ -86,21 +86,21 @@ export const theme = {
   },
   shadows: {
     sm: {
-      shadowColor: '#5DBEAA',
+      shadowColor: '#287587',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.05,
       shadowRadius: 4,
       elevation: 2,
     },
     md: {
-      shadowColor: '#5DBEAA',
+      shadowColor: '#287587',
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.1,
       shadowRadius: 8,
       elevation: 4,
     },
     lg: {
-      shadowColor: '#5DBEAA',
+      shadowColor: '#287587',
       shadowOffset: { width: 0, height: 8 },
       shadowOpacity: 0.15,
       shadowRadius: 16,

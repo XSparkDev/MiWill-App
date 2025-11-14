@@ -20,6 +20,12 @@ export interface UserProfile {
   phone_verified: boolean;
   is_active: boolean;
   onboarding_completed: boolean;
+  has_own_attorney?: boolean;
+  has_own_executor?: boolean;
+  miwill_attorney_accepted?: boolean;
+  miwill_executor_accepted?: boolean;
+  attorney_notification_dismissed?: boolean;
+  executor_notification_dismissed?: boolean;
   created_at: Date | string;
   updated_at: Date | string;
 }

@@ -59,6 +59,12 @@ export class UserService {
         phone_verified: false,
         is_active: true,
         onboarding_completed: false,
+        has_own_attorney: userData.has_own_attorney ?? false,
+        has_own_executor: userData.has_own_executor ?? false,
+        miwill_attorney_accepted: userData.miwill_attorney_accepted ?? false,
+        miwill_executor_accepted: userData.miwill_executor_accepted ?? false,
+        attorney_notification_dismissed: userData.attorney_notification_dismissed ?? false,
+        executor_notification_dismissed: userData.executor_notification_dismissed ?? false,
         created_at: Timestamp.now(),
         updated_at: Timestamp.now(),
       };

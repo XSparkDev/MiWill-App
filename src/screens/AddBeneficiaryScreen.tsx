@@ -966,24 +966,35 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                         </TouchableOpacity>
                       </View>
                     </View>
-                    {assetBeneficiaries[asset.asset_id] &&
-                      assetBeneficiaries[asset.asset_id].length > 0 &&
-                      assetBeneficiariesExpanded[asset.asset_id] && (
+                    {assetBeneficiariesExpanded[asset.asset_id] && (
                       <View style={styles.linkedBeneficiariesContainer}>
-                        <View style={styles.linkedBeneficiariesHeader}>
-                          <Text style={styles.linkedBeneficiariesLabel}>
-                            Linked beneficiaries ({assetBeneficiaries[asset.asset_id].length})
-                          </Text>
-                          <Text style={styles.linkedBeneficiariesHint}>Tap + to add more</Text>
-                        </View>
-                        {assetBeneficiaries[asset.asset_id].map((ben: any, idx: number) => (
-                          <View key={idx} style={styles.linkedBeneficiaryItemRow}>
-                            <Text style={styles.linkedBeneficiaryItem}>• {ben.beneficiary_name}</Text>
-                            <TouchableOpacity onPress={() => handleDelinkBeneficiary('asset', asset.asset_id, ben)}>
-                              <Ionicons name="close-circle" size={28} color={theme.colors.error} />
+                        {assetBeneficiaries[asset.asset_id] && assetBeneficiaries[asset.asset_id].length > 0 ? (
+                          <>
+                            <View style={styles.linkedBeneficiariesHeader}>
+                              <Text style={styles.linkedBeneficiariesLabel}>
+                                Linked beneficiaries ({assetBeneficiaries[asset.asset_id].length})
+                              </Text>
+                              <TouchableOpacity onPress={() => beginInlineAdd('asset', asset.asset_id)}>
+                                <Text style={styles.linkedBeneficiariesHint}>Tap + to add more</Text>
+                              </TouchableOpacity>
+                            </View>
+                            {assetBeneficiaries[asset.asset_id].map((ben: any, idx: number) => (
+                              <View key={idx} style={styles.linkedBeneficiaryItemRow}>
+                                <Text style={styles.linkedBeneficiaryItem}>• {ben.beneficiary_name}</Text>
+                                <TouchableOpacity onPress={() => handleDelinkBeneficiary('asset', asset.asset_id, ben)}>
+                                  <Ionicons name="close-circle" size={28} color={theme.colors.error} />
+                                </TouchableOpacity>
+                              </View>
+                            ))}
+                          </>
+                        ) : (
+                          <>
+                            <Text style={styles.linkedBeneficiariesEmpty}>No beneficiaries linked yet.</Text>
+                            <TouchableOpacity onPress={() => beginInlineAdd('asset', asset.asset_id)}>
+                              <Text style={styles.linkedBeneficiariesHint}>Tap + to add more beneficiaries.</Text>
                             </TouchableOpacity>
-                          </View>
-                        ))}
+                          </>
+                        )}
                       </View>
                     )}
                     {inlineAddTarget?.type === 'asset' &&
@@ -1129,24 +1140,35 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                         </TouchableOpacity>
                       </View>
                     </View>
-                    {policyBeneficiaries[policy.policy_id] &&
-                      policyBeneficiaries[policy.policy_id].length > 0 &&
-                      policyBeneficiariesExpanded[policy.policy_id] && (
+                    {policyBeneficiariesExpanded[policy.policy_id] && (
                       <View style={styles.linkedBeneficiariesContainer}>
-                        <View style={styles.linkedBeneficiariesHeader}>
-                          <Text style={styles.linkedBeneficiariesLabel}>
-                            Linked beneficiaries ({policyBeneficiaries[policy.policy_id].length})
-                          </Text>
-                          <Text style={styles.linkedBeneficiariesHint}>Tap + to add more</Text>
-                        </View>
-                        {policyBeneficiaries[policy.policy_id].map((ben: any, idx: number) => (
-                          <View key={idx} style={styles.linkedBeneficiaryItemRow}>
-                            <Text style={styles.linkedBeneficiaryItem}>• {ben.beneficiary_name}</Text>
-                            <TouchableOpacity onPress={() => handleDelinkBeneficiary('policy', policy.policy_id, ben)}>
-                              <Ionicons name="close-circle" size={28} color={theme.colors.error} />
+                        {policyBeneficiaries[policy.policy_id] && policyBeneficiaries[policy.policy_id].length > 0 ? (
+                          <>
+                            <View style={styles.linkedBeneficiariesHeader}>
+                              <Text style={styles.linkedBeneficiariesLabel}>
+                                Linked beneficiaries ({policyBeneficiaries[policy.policy_id].length})
+                              </Text>
+                              <TouchableOpacity onPress={() => beginInlineAdd('policy', policy.policy_id)}>
+                                <Text style={styles.linkedBeneficiariesHint}>Tap + to add more</Text>
+                              </TouchableOpacity>
+                            </View>
+                            {policyBeneficiaries[policy.policy_id].map((ben: any, idx: number) => (
+                              <View key={idx} style={styles.linkedBeneficiaryItemRow}>
+                                <Text style={styles.linkedBeneficiaryItem}>• {ben.beneficiary_name}</Text>
+                                <TouchableOpacity onPress={() => handleDelinkBeneficiary('policy', policy.policy_id, ben)}>
+                                  <Ionicons name="close-circle" size={28} color={theme.colors.error} />
+                                </TouchableOpacity>
+                              </View>
+                            ))}
+                          </>
+                        ) : (
+                          <>
+                            <Text style={styles.linkedBeneficiariesEmpty}>No beneficiaries linked yet.</Text>
+                            <TouchableOpacity onPress={() => beginInlineAdd('policy', policy.policy_id)}>
+                              <Text style={styles.linkedBeneficiariesHint}>Tap + to add more beneficiaries.</Text>
                             </TouchableOpacity>
-                          </View>
-                        ))}
+                          </>
+                        )}
                       </View>
                     )}
                     {inlineAddTarget?.type === 'policy' &&
@@ -1607,6 +1629,11 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.xs,
     color: theme.colors.success,
     fontStyle: 'italic',
+  },
+  linkedBeneficiariesEmpty: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.xs,
   },
   linkedBeneficiaryItemRow: {
     flexDirection: 'row',

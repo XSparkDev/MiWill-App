@@ -19,6 +19,7 @@ import { theme } from '../config/theme.config';
 import { useAuth } from '../contexts/AuthContext';
 import PolicyService from '../services/policyService';
 import Toast from '../components/Toast';
+import { formatCurrencyInput, parseCurrency } from '../utils/currencyFormatter';
 
 const { width } = Dimensions.get('window');
 
@@ -88,6 +89,10 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
   const totalSteps = 3;
 
   const updateFormData = (field: string, value: string) => {
+    if (field === 'policyValue') {
+      setFormData(prev => ({ ...prev, [field]: formatCurrencyInput(value) }));
+      return;
+    }
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -176,7 +181,7 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
         policy_number: formData.policyNumber.trim(),
         policy_type: formData.policyType as any,
         insurance_company: formData.insuranceCompany.trim(),
-        policy_value: formData.policyValue ? parseFloat(formData.policyValue) : undefined,
+        policy_value: formData.policyValue ? parseCurrency(formData.policyValue) : undefined,
         policy_description: formData.policyDescription.trim() || undefined,
         is_active: true,
       });

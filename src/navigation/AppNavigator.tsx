@@ -22,6 +22,8 @@ import PrivacySettingsScreen from '../screens/PrivacySettingsScreen';
 import TwoFactorSettingsScreen from '../screens/TwoFactorSettingsScreen';
 import TermsConditionsScreen from '../screens/TermsConditionsScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
+import UpdateAttorneyScreen from '../screens/UpdateAttorneyScreen';
+import UpdateExecutorScreen from '../screens/UpdateExecutorScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -33,6 +35,8 @@ export type RootStackParamList = {
   AddBeneficiary: undefined;
   UploadWill: undefined;
   UpdateProfile: undefined;
+  UpdateAttorney: undefined;
+  UpdateExecutor: undefined;
   Settings: undefined;
   AccountSettings: undefined;
   DocumentsContacts: undefined;
@@ -66,6 +70,8 @@ const AppNavigator: React.FC = () => {
       <Stack.Screen name="AddBeneficiary" component={AddBeneficiaryScreen} />
       <Stack.Screen name="UploadWill" component={UploadWillScreen} />
       <Stack.Screen name="UpdateProfile" component={UpdateProfileScreen} />
+      <Stack.Screen name="UpdateAttorney" component={UpdateAttorneyScreen} />
+      <Stack.Screen name="UpdateExecutor" component={UpdateExecutorScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
       <Stack.Screen name="DocumentsContacts" component={DocumentsContactsScreen} />

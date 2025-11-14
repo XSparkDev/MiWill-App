@@ -225,7 +225,43 @@ We'll create each collection one by one. In Firestore, you can create collection
      - Type: `timestamp`
      - Value: Current date/time
 
-**Total Fields: 21** (19 required fields + 2 new POPIA fields)
+     **Field 22**: `has_own_attorney`
+     - Field: `has_own_attorney`
+     - Type: `boolean`
+     - Value: `false` (true if user provided their own attorney, false if using MiWill attorneys)
+     - Note: Tracks whether user has assigned their own attorney or is using MiWill partner attorneys
+
+     **Field 23**: `has_own_executor`
+     - Field: `has_own_executor`
+     - Type: `boolean`
+     - Value: `false` (true if user provided their own executor, false if using MiWill executors)
+     - Note: Tracks whether user has assigned their own executor or is using MiWill executors
+
+     **Field 24**: `miwill_attorney_accepted`
+     - Field: `miwill_attorney_accepted`
+     - Type: `boolean`
+     - Value: `false` (true if user agreed to use MiWill partner attorneys)
+     - Note: Indicates user consent to MiWill attorney assignment
+
+     **Field 25**: `miwill_executor_accepted`
+     - Field: `miwill_executor_accepted`
+     - Type: `boolean`
+     - Value: `false` (true if user agreed to use MiWill executors)
+     - Note: Indicates user consent to MiWill executor assignment
+
+     **Field 26**: `attorney_notification_dismissed`
+     - Field: `attorney_notification_dismissed`
+     - Type: `boolean`
+     - Value: `false` (true once user dismisses the attorney update notification)
+     - Note: Prevents showing attorney notification after user has seen it
+
+     **Field 27**: `executor_notification_dismissed`
+     - Field: `executor_notification_dismissed`
+     - Type: `boolean`
+     - Value: `false` (true once user dismisses the executor update notification)
+     - Note: Prevents showing executor notification after user has seen it
+
+**Total Fields: 27** (19 original fields + 2 POPIA fields + 6 attorney/executor tracking fields)
 
 4. **Save Document**:
    - Click "Save"

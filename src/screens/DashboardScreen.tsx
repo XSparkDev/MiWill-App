@@ -56,6 +56,9 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const [expandedPolicies, setExpandedPolicies] = useState<Record<string, boolean>>({});
   const [selectedManagement, setSelectedManagement] = useState<'assets' | 'policies' | null>(null);
   const [showBeneficiariesModal, setShowBeneficiariesModal] = useState(false);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [hasAttorneyNotification, setHasAttorneyNotification] = useState(false);
+  const [hasExecutorNotification, setHasExecutorNotification] = useState(false);
   const [inlineTarget, setInlineTarget] =
     useState<{ type: 'asset' | 'policy'; id: string } | null>(null);
   const [inlineForm, setInlineForm] = useState({
@@ -137,6 +140,25 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       // Fetch user profile
       const profile = await UserService.getUserById(currentUser.uid);
       setUserProfile(profile);
+
+      // Check for attorney/executor notifications
+      if (profile) {
+        const hasOwnAttorney = profile.has_own_attorney ?? false;
+        const hasOwnExecutor = profile.has_own_executor ?? false;
+        const miWillAttorneyAccepted = profile.miwill_attorney_accepted ?? false;
+        const miWillExecutorAccepted = profile.miwill_executor_accepted ?? false;
+        const attorneyDismissed = profile.attorney_notification_dismissed ?? false;
+        const executorDismissed = profile.executor_notification_dismissed ?? false;
+
+        const needsAttorneyNotification =
+          !hasOwnAttorney && miWillAttorneyAccepted && !attorneyDismissed;
+
+        const needsExecutorNotification =
+          !hasOwnExecutor && miWillExecutorAccepted && !executorDismissed;
+
+        setHasAttorneyNotification(needsAttorneyNotification);
+        setHasExecutorNotification(needsExecutorNotification);
+      }
 
       // Fetch assets
       const userAssets = await AssetService.getUserAssets(currentUser.uid);
@@ -709,7 +731,9 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             ) : (
               <Text style={styles.linkedEmpty}>No beneficiaries linked yet.</Text>
             )}
-            <Text style={styles.linkedHint}>Tap + to add more beneficiaries.</Text>
+            <TouchableOpacity onPress={() => beginInlineAdd('asset', asset.asset_id)}>
+              <Text style={styles.linkedHint}>Tap + to add more beneficiaries.</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -784,7 +808,9 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             ) : (
               <Text style={styles.linkedEmpty}>No beneficiaries linked yet.</Text>
             )}
-            <Text style={styles.linkedHint}>Tap + to add more beneficiaries.</Text>
+            <TouchableOpacity onPress={() => beginInlineAdd('policy', policy.policy_id)}>
+              <Text style={styles.linkedHint}>Tap + to add more beneficiaries.</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -855,7 +881,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Header with Logo, Menu, and Logout */}
+        {/* Header with Logo, Notification Bell, and Menu */}
         <View style={styles.header}>
           <Image
             source={require('../../assets/logo.png')}
@@ -863,8 +889,14 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             resizeMode="contain"
           />
           <View style={styles.headerButtons}>
-            <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-              <Text style={styles.logoutText}>Logout</Text>
+            <TouchableOpacity 
+              onPress={() => setShowNotificationModal(true)} 
+              style={styles.notificationBellButton}
+            >
+              <Ionicons name="notifications" size={24} color={theme.colors.primary} />
+              {(hasAttorneyNotification || hasExecutorNotification) && (
+                <View style={styles.notificationBadge} />
+              )}
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setShowSideMenu(true)}
@@ -1155,10 +1187,136 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         onSelectPolicy={handleAddPolicy}
       />
 
+      {/* Notification Modal */}
+      <Modal
+        visible={showNotificationModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowNotificationModal(false)}
+      >
+        <View style={styles.notificationModalOverlay}>
+          <View style={styles.notificationModalContent}>
+            <View style={styles.notificationModalHeader}>
+              <Text style={styles.notificationModalTitle}>Notifications</Text>
+              <TouchableOpacity onPress={() => setShowNotificationModal(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView 
+              style={styles.notificationModalScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              {!hasAttorneyNotification && !hasExecutorNotification ? (
+                <View style={styles.notificationEmptyState}>
+                  <Ionicons name="notifications-off-outline" size={60} color={theme.colors.textSecondary} />
+                  <Text style={styles.notificationEmptyText}>No new notifications</Text>
+                </View>
+              ) : (
+                <>
+                  {hasAttorneyNotification && (
+                    <View style={styles.notificationCard}>
+                      <View style={styles.notificationIconContainer}>
+                        <Ionicons name="information-circle" size={24} color={theme.colors.info} />
+                      </View>
+                      <View style={styles.notificationContent}>
+                        <Text style={styles.notificationTitle}>MiWill Partner Attorney Assigned</Text>
+                        <Text style={styles.notificationBody}>
+                          You have chosen to use MiWill Partner Attorneys. If you would like to appoint your own attorney, you can do so at any time.
+                        </Text>
+                        <View style={styles.notificationActions}>
+                          <TouchableOpacity
+                            style={styles.notificationButton}
+                            onPress={async () => {
+                              setShowNotificationModal(false);
+                              // Navigate to Update Attorney screen
+                              navigation.navigate('UpdateAttorney');
+                            }}
+                          >
+                            <Text style={styles.notificationButtonText}>Appoint My Own Attorney</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.notificationDismissButton}
+                            onPress={async () => {
+                              try {
+                                if (currentUser && userProfile) {
+                                  await UserService.updateUser(currentUser.uid, {
+                                    attorney_notification_dismissed: true,
+                                  });
+                                  setHasAttorneyNotification(false);
+                                  if (!hasExecutorNotification) {
+                                    setShowNotificationModal(false);
+                                  }
+                                }
+                              } catch (error) {
+                                console.error('Error dismissing notification:', error);
+                              }
+                            }}
+                          >
+                            <Text style={styles.notificationDismissText}>Dismiss</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+
+                  {hasExecutorNotification && (
+                    <View style={styles.notificationCard}>
+                      <View style={styles.notificationIconContainer}>
+                        <Ionicons name="information-circle" size={24} color={theme.colors.info} />
+                      </View>
+                      <View style={styles.notificationContent}>
+                        <Text style={styles.notificationTitle}>MiWill Executor Assigned</Text>
+                        <Text style={styles.notificationBody}>
+                          You have chosen to use MiWill Executors. If you would like to appoint your own executor, you can do so at any time.
+                        </Text>
+                        <View style={styles.notificationActions}>
+                          <TouchableOpacity
+                            style={styles.notificationButton}
+                            onPress={async () => {
+                              setShowNotificationModal(false);
+                              // Navigate to Update Executor screen
+                              navigation.navigate('UpdateExecutor');
+                            }}
+                          >
+                            <Text style={styles.notificationButtonText}>Appoint My Own Executor</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.notificationDismissButton}
+                            onPress={async () => {
+                              try {
+                                if (currentUser && userProfile) {
+                                  await UserService.updateUser(currentUser.uid, {
+                                    executor_notification_dismissed: true,
+                                  });
+                                  setHasExecutorNotification(false);
+                                  if (!hasAttorneyNotification) {
+                                    setShowNotificationModal(false);
+                                  }
+                                }
+                              } catch (error) {
+                                console.error('Error dismissing notification:', error);
+                              }
+                            }}
+                          >
+                            <Text style={styles.notificationDismissText}>Dismiss</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <SideMenu
         visible={showSideMenu}
         onClose={() => setShowSideMenu(false)}
         navigation={navigation}
+        onLogout={handleLogout}
       />
 
       <Toast
@@ -1200,17 +1358,20 @@ const styles = StyleSheet.create({
   menuButton: {
     padding: theme.spacing.xs,
   },
-  logoutButton: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+  notificationBellButton: {
+    padding: theme.spacing.xs,
+    position: 'relative',
   },
-  logoutText: {
-    fontSize: theme.typography.sizes.sm,
-    color: theme.colors.textSecondary,
-    fontWeight: theme.typography.weights.medium as any,
+  notificationBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: theme.colors.error,
+    borderWidth: 2,
+    borderColor: theme.colors.background,
   },
   navTabsCard: {
     marginHorizontal: theme.spacing.lg,
@@ -1689,6 +1850,99 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.md,
     fontSize: theme.typography.sizes.md,
     color: theme.colors.textSecondary,
+  },
+  notificationModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  notificationModalContent: {
+    backgroundColor: theme.colors.background,
+    borderTopLeftRadius: theme.borderRadius.xxl,
+    borderTopRightRadius: theme.borderRadius.xxl,
+    maxHeight: '70%',
+    paddingTop: theme.spacing.xl,
+    paddingBottom: theme.spacing.xxl,
+  },
+  notificationModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.xl,
+    paddingBottom: theme.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  notificationModalTitle: {
+    fontSize: theme.typography.sizes.xl,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+  },
+  notificationModalScroll: {
+    paddingHorizontal: theme.spacing.xl,
+    paddingTop: theme.spacing.lg,
+  },
+  notificationEmptyState: {
+    alignItems: 'center',
+    paddingVertical: theme.spacing.xxxl,
+  },
+  notificationEmptyText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.md,
+  },
+  notificationCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xl,
+    padding: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    flexDirection: 'row',
+  },
+  notificationIconContainer: {
+    marginRight: theme.spacing.md,
+    paddingTop: theme.spacing.xs,
+  },
+  notificationContent: {
+    flex: 1,
+  },
+  notificationTitle: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  notificationBody: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+    marginBottom: theme.spacing.md,
+  },
+  notificationActions: {
+    gap: theme.spacing.sm,
+  },
+  notificationButton: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.lg,
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
+    alignItems: 'center',
+  },
+  notificationButtonText: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.buttonText,
+  },
+  notificationDismissButton: {
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.lg,
+    alignItems: 'center',
+  },
+  notificationDismissText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    textDecorationLine: 'underline',
   },
 });
 

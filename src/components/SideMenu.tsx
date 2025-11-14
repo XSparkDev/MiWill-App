@@ -15,9 +15,10 @@ interface SideMenuProps {
   visible: boolean;
   onClose: () => void;
   navigation: any;
+  onLogout: () => void;
 }
 
-const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, navigation }) => {
+const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, navigation, onLogout }) => {
   const menuItems = [
     {
       id: 'settings',
@@ -113,6 +114,18 @@ const SideMenu: React.FC<SideMenuProps> = ({ visible, onClose, navigation }) => 
                   <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
                 </TouchableOpacity>
               ))}
+
+              {/* Logout Button */}
+              <TouchableOpacity
+                style={styles.logoutMenuItem}
+                onPress={() => {
+                  onClose();
+                  onLogout();
+                }}
+              >
+                <Ionicons name="log-out-outline" size={24} color={theme.colors.error} />
+                <Text style={styles.logoutMenuItemText}>Logout</Text>
+              </TouchableOpacity>
             </ScrollView>
           </SafeAreaView>
         </View>
@@ -202,6 +215,22 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginLeft: theme.spacing.md,
     flex: 1,
+  },
+  logoutMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.xl,
+    paddingVertical: theme.spacing.lg,
+    marginTop: theme.spacing.lg,
+    borderTopWidth: 2,
+    borderTopColor: theme.colors.border,
+  },
+  logoutMenuItemText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.error,
+    marginLeft: theme.spacing.md,
+    flex: 1,
+    fontWeight: theme.typography.weights.semibold as any,
   },
 });
 
