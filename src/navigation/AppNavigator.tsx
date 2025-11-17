@@ -24,6 +24,7 @@ import TermsConditionsScreen from '../screens/TermsConditionsScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 import UpdateAttorneyScreen from '../screens/UpdateAttorneyScreen';
 import UpdateExecutorScreen from '../screens/UpdateExecutorScreen';
+import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -50,6 +51,7 @@ export type RootStackParamList = {
   TwoFactorSettings: undefined;
   TermsConditions: undefined;
   PrivacyPolicy: undefined;
+  ResetPassword: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -63,6 +65,7 @@ const AppNavigator: React.FC = () => {
     >
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Registration" component={RegistrationScreen} />
+      <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
       <Stack.Screen name="Dashboard" component={DashboardScreen} />
       <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       <Stack.Screen name="AddAsset" component={AddAssetScreen} />

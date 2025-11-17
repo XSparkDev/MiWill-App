@@ -140,6 +140,8 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [showPopiaModal, setShowPopiaModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Check if current step has all required fields filled
   const isStepValid = (): boolean => {
@@ -227,6 +229,34 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
       
       return updated;
     });
+  };
+
+  const handleAttorneySelection = (hasOwn: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      hasOwnAttorney: hasOwn,
+      miWillAttorneyAccepted: hasOwn ? false : true,
+    }));
+
+    if (hasOwn) {
+      setTimeout(() => nextStep(), 0);
+    } else {
+      setShowMiWillAttorneyModal(true);
+    }
+  };
+
+  const handleExecutorSelection = (hasOwn: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      hasOwnExecutor: hasOwn,
+      miWillExecutorAccepted: hasOwn ? false : true,
+    }));
+
+    if (hasOwn) {
+      setTimeout(() => nextStep(), 0);
+    } else {
+      setShowMiWillExecutorModal(true);
+    }
   };
 
   const handleExecutorSameAsAttorney = () => {
@@ -702,33 +732,57 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               keyboardType="numeric"
             />
 
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.password}
-              onChangeText={(value) => updateFormData('password', value)}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="off"
-              textContentType="none"
-              importantForAutofill="no"
-            />
+            <View style={styles.passwordInputWrapper}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Password"
+                placeholderTextColor={theme.colors.placeholder}
+                value={formData.password}
+                onChangeText={(value) => updateFormData('password', value)}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="off"
+                textContentType="none"
+                importantForAutofill="no"
+              />
+              <TouchableOpacity
+                style={styles.eyeIcon}
+                onPress={() => setShowPassword(!showPassword)}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={24}
+                  color={theme.colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Confirm Password"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.confirmPassword}
-              onChangeText={(value) => updateFormData('confirmPassword', value)}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="off"
-              textContentType="none"
-              importantForAutofill="no"
-            />
+            <View style={styles.passwordInputWrapper}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Confirm Password"
+                placeholderTextColor={theme.colors.placeholder}
+                value={formData.confirmPassword}
+                onChangeText={(value) => updateFormData('confirmPassword', value)}
+                secureTextEntry={!showConfirmPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="off"
+                textContentType="none"
+                importantForAutofill="no"
+              />
+              <TouchableOpacity
+                style={styles.eyeIcon}
+                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+              >
+                <Ionicons
+                  name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={24}
+                  color={theme.colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.popiaContainer}>
               <TouchableOpacity
@@ -888,7 +942,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 styles.selectionButton,
                 formData.hasOwnAttorney === true && styles.selectionButtonOutlineActive,
               ]}
-              onPress={() => updateFormData('hasOwnAttorney', true)}
+              onPress={() => handleAttorneySelection(true)}
             >
               <Text style={[
                 styles.selectionButtonText,
@@ -904,7 +958,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 styles.selectionButtonFilled,
                 formData.hasOwnAttorney === false && styles.selectionButtonFilledActive,
               ]}
-              onPress={() => updateFormData('hasOwnAttorney', false)}
+              onPress={() => handleAttorneySelection(false)}
             >
               <Text style={styles.selectionButtonTextFilled}>
                 No, I need an attorney
@@ -1015,7 +1069,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 styles.selectionButton,
                 formData.hasOwnExecutor === true && styles.selectionButtonOutlineActive,
               ]}
-              onPress={() => updateFormData('hasOwnExecutor', true)}
+              onPress={() => handleExecutorSelection(true)}
             >
               <Text style={[
                 styles.selectionButtonText,
@@ -1031,7 +1085,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 styles.selectionButtonFilled,
                 formData.hasOwnExecutor === false && styles.selectionButtonFilledActive,
               ]}
-              onPress={() => updateFormData('hasOwnExecutor', false)}
+              onPress={() => handleExecutorSelection(false)}
             >
               <Text style={styles.selectionButtonTextFilled}>
                 No, I need an executor
@@ -1305,7 +1359,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
           <Animated.View style={[styles.stepContainer, animatedStyle]}>
             <View style={styles.completionContainer}>
               <Image
-                source={require('../../assets/logo.png')}
+                source={require('../../assets/logo1.png')}
                 style={styles.completionLogo}
                 resizeMode="contain"
               />
@@ -1339,31 +1393,33 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
           {renderProgressBar()}
           {renderStep()}
 
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity
-              style={[
-                styles.nextButton,
-                styles.nextButtonFull,
-                (!isStepValid() || (currentStep === totalSteps - 1 && isCompleting)) && styles.nextButtonDisabled
-              ]}
-              onPress={nextStep}
-              disabled={!isStepValid() || (currentStep === totalSteps - 1 && isCompleting)}
-            >
-              {currentStep === totalSteps - 1 && isCompleting ? (
-                <View style={styles.nextButtonLoading}>
-                  <ActivityIndicator size="small" color={theme.colors.buttonText} />
-                  <Text style={styles.nextButtonLoadingText}>Completing...</Text>
-                </View>
-              ) : (
-                <Text style={[
-                  styles.nextButtonText,
-                  !isStepValid() && styles.nextButtonTextDisabled
-                ]}>
-                  {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
+          {currentStep !== 2 && currentStep !== 4 && (
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.nextButton,
+                  styles.nextButtonFull,
+                  (!isStepValid() || (currentStep === totalSteps - 1 && isCompleting)) && styles.nextButtonDisabled
+                ]}
+                onPress={nextStep}
+                disabled={!isStepValid() || (currentStep === totalSteps - 1 && isCompleting)}
+              >
+                {currentStep === totalSteps - 1 && isCompleting ? (
+                  <View style={styles.nextButtonLoading}>
+                    <ActivityIndicator size="small" color={theme.colors.buttonText} />
+                    <Text style={styles.nextButtonLoadingText}>Completing...</Text>
+                  </View>
+                ) : (
+                  <Text style={[
+                    styles.nextButtonText,
+                    !isStepValid() && styles.nextButtonTextDisabled
+                  ]}>
+                    {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
 
           {currentStep >= 1 && currentStep <= 7 && (
             <View style={styles.cancelButtonContainer}>
@@ -1873,6 +1929,26 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     backgroundColor: theme.colors.inputBackground,
     marginBottom: theme.spacing.md,
+  },
+  passwordInputWrapper: {
+    height: 56,
+    borderWidth: 2,
+    borderColor: theme.colors.inputBorder,
+    borderRadius: theme.borderRadius.xl,
+    backgroundColor: theme.colors.inputBackground,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
+  },
+  passwordInput: {
+    flex: 1,
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.text,
+  },
+  eyeIcon: {
+    padding: theme.spacing.xs,
+    marginLeft: theme.spacing.sm,
   },
   frequencyOption: {
     backgroundColor: theme.colors.surface,

@@ -11,6 +11,7 @@ import {
   Image,
   Modal,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme } from '../config/theme.config';
 import AuthService from '../services/authService';
@@ -30,6 +31,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [popiaAccepted, setPopiaAccepted] = useState(false);
   const [showPopiaModal, setShowPopiaModal] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const lastCheckedEmailRef = useRef<string>('');
   const checkingPopiaRef = useRef<boolean>(false);
 
@@ -187,8 +189,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   };
 
   const handleResetPassword = () => {
-    // TODO: Implement reset password
-    console.log('Reset password');
+    navigation.navigate('ResetPassword');
   };
 
   return (
@@ -203,7 +204,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         {/* Logo */}
         <View style={styles.logoContainer}>
           <Image
-            source={require('../../assets/logo.png')}
+            source={require('../../assets/logo1.png')}
             style={styles.logo}
             resizeMode="contain"
           />
@@ -228,15 +229,27 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
         {/* Password Input */}
         <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor={theme.colors.placeholder}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-          />
+          <View style={styles.passwordInputWrapper}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Password"
+              placeholderTextColor={theme.colors.placeholder}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity
+              style={styles.eyeIcon}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <Ionicons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={24}
+                color={theme.colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Error */}
@@ -422,6 +435,27 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     backgroundColor: theme.colors.inputBackground,
     textAlign: 'center',
+  },
+  passwordInputWrapper: {
+    width: '100%',
+    height: 56,
+    borderWidth: 2,
+    borderColor: theme.colors.inputBorder,
+    borderRadius: theme.borderRadius.xl,
+    backgroundColor: theme.colors.inputBackground,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.lg,
+  },
+  passwordInput: {
+    flex: 1,
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.text,
+    textAlign: 'center',
+  },
+  eyeIcon: {
+    padding: theme.spacing.xs,
+    marginLeft: theme.spacing.sm,
   },
   loginButton: {
     width: '100%',

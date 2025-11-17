@@ -4,10 +4,11 @@ Generate all required iOS app icons from a source image.
 """
 from pathlib import Path
 from PIL import Image
+import argparse
 import json
 
-def generate_ios_icons():
-    source = Path("assets/appstorelogo.png")
+def generate_ios_icons(source_path: Path):
+    source = source_path
     if not source.exists():
         print(f"❌ Source image not found: {source}")
         return False
@@ -91,8 +92,17 @@ def generate_ios_icons():
     return True
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate iOS app icons.")
+    parser.add_argument(
+        "--source",
+        type=Path,
+        default=Path("assets/logo8.png"),
+        help="Path to the source image (PNG). Defaults to assets/logo8.png"
+    )
+    args = parser.parse_args()
+
     try:
-        success = generate_ios_icons()
+        success = generate_ios_icons(args.source)
         exit(0 if success else 1)
     except Exception as e:
         print(f"❌ Error: {e}")

@@ -1,11 +1,16 @@
 {
   "expo": {
-    "name": "Mi Will",
+    "name": "MiWill",
     "slug": "miwill-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/appstorelogo.png",
+    "icon": "./assets/logo8.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/logo2.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
     
     "assetBundlePatterns": [
       "**/*"
@@ -14,7 +19,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.xsparkdev.miwill",
       "buildNumber": "1",
-      "icon": "./assets/appstorelogo.png"
+      "icon": "./assets/logo8.png"
     },
     "android": {
       "package": "com.miwill.app",

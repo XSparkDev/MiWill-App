@@ -907,7 +907,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         {/* Header with Logo, Notification Bell, and Menu */}
         <View style={styles.header}>
           <Image
-            source={require('../../assets/logo.png')}
+            source={require('../../assets/logo1.png')}
             style={styles.logo}
             resizeMode="contain"
           />

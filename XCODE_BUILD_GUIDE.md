@@ -3,7 +3,7 @@
 ## ✅ Completed Setup
 
 1. **iOS App Icons Generated** ✅
-   - Created 18 different icon sizes from your `appstorelogo.png`
+   - Created 18 different icon sizes from your `logo2.png`
    - All icons copied to `ios/MiWill/Images.xcassets/AppIcon.appiconset/`
    - Contents.json properly configured
 

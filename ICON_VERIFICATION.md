@@ -2,14 +2,14 @@
 
 ## ✅ What I Just Did
 
-1. **Regenerated all app icons** from your `appstorelogo.png`
+1. **Regenerated all app icons** from your `logo2.png`
    - Created 18 different sizes (20x20 to 1024x1024)
    
 2. **Cleared old icons** and copied fresh ones
 
 3. **Added icon config to `app.json`:**
    ```json
-   "icon": "./assets/appstorelogo.png"
+   "icon": "./assets/logo2.png"
    ```
 
 4. **Rebuilt iOS project** with proper icon integration
@@ -71,7 +71,7 @@ Location: `/Users/xspark2/Desktop/MiWill-App/ios/MiWill/Images.xcassets/AppIcon.
 - ✅ `Contents.json` (configuration file)
 
 ### Icon Specifications:
-- **Source:** `assets/appstorelogo.png`
+- **Source:** `assets/logo2.png`
 - **Logo:** Blue "M" with "MiWill" text
 - **Sizes:** 18 different icon sizes
 - **Format:** PNG with transparency
