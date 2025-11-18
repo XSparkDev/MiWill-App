@@ -96,8 +96,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--source",
         type=Path,
-        default=Path("assets/logo8.png"),
-        help="Path to the source image (PNG). Defaults to assets/logo8.png"
+        default=Path("assets/logo10.png"),
+        help="Path to the source image (PNG). Defaults to assets/logo10.png"
     )
     args = parser.parse_args()
 

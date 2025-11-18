@@ -4,7 +4,7 @@
     "slug": "miwill-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/logo8.png",
+    "icon": "./assets/logo10.png",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/logo2.png",
@@ -19,7 +19,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.xsparkdev.miwill",
       "buildNumber": "1",
-      "icon": "./assets/logo8.png"
+      "icon": "./assets/logo10.png"
     },
     "android": {
       "package": "com.miwill.app",
