@@ -320,8 +320,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                 • Your personal details, executor and beneficiary information are collected
                 solely for estate-planning purposes.
                 {'\n'}
-                • We store this information securely and only share it with authorised parties
-                such as attorneys, executors, or trusted contacts you nominate.
+                • We store this information securely and share it with authorised MiWill Partners,
+                including attorneys, executors, and XS Card Partners, as well as trusted contacts
+                you nominate.
                 {'\n'}
                 • You may request access to, correction of, or deletion of your personal
                 information at any time via the MiWill support team.
@@ -368,9 +369,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                 grant us permission to store them securely and make them available to authorised
                 parties for estate administration.
                 {'\n'}
-                • MiWill complies with South African estate planning regulations; however,
-                final validation of wills may require witnessing and legal execution outside
-                the app.
+                • MiWill complies with South African estate planning regulations. MiWill will
+                auto-transcribe your will in a legally structured manner with confirmation from
+                the authorised Partners and will be sent to you for signing and return (one copy
+                will be stored in the MiWill Partner Vault and a copy remains with you).
                 {'\n'}
                 • Misuse of the service, fraudulent data, or unauthorised access is prohibited
                 and may lead to suspension or legal action.

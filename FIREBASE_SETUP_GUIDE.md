@@ -158,80 +158,86 @@ We'll create each collection one by one. In Firestore, you can create collection
      - Type: `string`
      - Value: `POL-001-2024`
 
-    **Field 9**: `profile_picture_path`
+     **Field 9**: `address`
+     - Field: `address`
+     - Type: `string`
+     - Value: `123 Main Street, Johannesburg, Gauteng, 2000`
+     - Note: User's full residential address
+
+    **Field 10**: `profile_picture_path`
     - Field: `profile_picture_path`
     - Type: `string`
     - Value: `/Users/[your-username]/Desktop/MiWill-App/storage/profile_pictures/[user_id]/profile.jpg` (local file path)
     - Note: We are using local storage for now. Keep profile images under `MiWill-App/storage/profile_pictures/[user_id]/`. When migrating to Firebase Storage, you can add a separate `profile_picture_url` field to store the HTTPS URL.
 
-     **Field 10**: `notification_frequency`
+     **Field 11**: `notification_frequency`
      - Field: `notification_frequency`
      - Type: `string`
      - Value: `weekly` (Options: daily, weekly, monthly, quarterly, custom_days)
 
-     **Field 11**: `custom_frequency_days`
+     **Field 12**: `custom_frequency_days`
      - Field: `custom_frequency_days`
      - Type: `number`
      - Value: `7` (only if notification_frequency is "custom_days")
 
-     **Field 12**: `popia_accepted`
+     **Field 13**: `popia_accepted`
      - Field: `popia_accepted`
      - Type: `boolean`
      - Value: `true` or `false`
      - Note: Indicates whether user accepted POPIA Act terms
 
-     **Field 13**: `popia_accepted_at`
+     **Field 14**: `popia_accepted_at`
      - Field: `popia_accepted_at`
      - Type: `timestamp`
      - Value: Timestamp when POPIA was accepted (null if not accepted)
 
-     **Field 14**: `account_created`
+     **Field 15**: `account_created`
      - Field: `account_created`
      - Type: `timestamp`
      - Value: Click timestamp icon, select current date/time
 
-     **Field 15**: `last_seen`
+     **Field 16**: `last_seen`
      - Field: `last_seen`
      - Type: `timestamp`
      - Value: Current date/time
 
-     **Field 16**: `email_verified`
+     **Field 17**: `email_verified`
      - Field: `email_verified`
      - Type: `boolean`
      - Value: `false`
 
-     **Field 17**: `phone_verified`
+     **Field 18**: `phone_verified`
      - Field: `phone_verified`
      - Type: `boolean`
      - Value: `false`
 
-     **Field 18**: `is_active`
+     **Field 19**: `is_active`
      - Field: `is_active`
      - Type: `boolean`
      - Value: `true`
 
-     **Field 19**: `onboarding_completed`
+     **Field 20**: `onboarding_completed`
      - Field: `onboarding_completed`
      - Type: `boolean`
      - Value: `false`
 
-     **Field 20**: `created_at`
+     **Field 21**: `created_at`
      - Field: `created_at`
      - Type: `timestamp`
      - Value: Current date/time
 
-     **Field 21**: `updated_at`
+     **Field 22**: `updated_at`
      - Field: `updated_at`
      - Type: `timestamp`
      - Value: Current date/time
 
-     **Field 22**: `has_own_attorney`
+     **Field 23**: `has_own_attorney`
      - Field: `has_own_attorney`
      - Type: `boolean`
      - Value: `false` (true if user provided their own attorney, false if using MiWill attorneys)
      - Note: Tracks whether user has assigned their own attorney or is using MiWill partner attorneys
 
-     **Field 23**: `has_own_executor`
+     **Field 24**: `has_own_executor`
      - Field: `has_own_executor`
      - Type: `boolean`
      - Value: `false` (true if user provided their own executor, false if using MiWill executors)

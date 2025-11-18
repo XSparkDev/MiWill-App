@@ -10,6 +10,7 @@ export interface UserProfile {
   id_number: string;
   policy_number?: string;
   profile_picture_path?: string;
+  address?: string;
   notification_frequency: NotificationFrequency;
   custom_frequency_days?: number;
   popia_accepted: boolean;

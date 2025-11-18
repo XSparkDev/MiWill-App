@@ -41,6 +41,7 @@ type StepData = {
   idNumber: string;
   policyNumber: string;
   profilePicturePath: string;
+  address: string;
   notificationFrequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom_years' | '';
   customYears: string;
   customMonths: string;
@@ -86,6 +87,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     idNumber: '',
     policyNumber: '',
     profilePicturePath: '',
+    address: '',
     notificationFrequency: '',
     customYears: '1',
     customMonths: '0',
@@ -128,6 +130,15 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
   const [isCompleting, setIsCompleting] = useState(false);
   const [showAttorneyInfoModal, setShowAttorneyInfoModal] = useState(false);
   const [showExecutorInfoModal, setShowExecutorInfoModal] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const confettiAnims = useRef(
+    Array.from({ length: 30 }, () => ({
+      translateY: new Animated.Value(-50),
+      translateX: new Animated.Value(0),
+      rotate: new Animated.Value(0),
+      opacity: new Animated.Value(1),
+    }))
+  ).current;
 
   // Simple validators
   const isValidEmail = (email: string) =>
@@ -208,6 +219,58 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
       updateFormData('policyNumber', generatePolicyNumber());
     }
   }, []);
+
+  // Trigger confetti animation when reaching step 8 (completion)
+  useEffect(() => {
+    if (currentStep === 8) {
+      setShowConfetti(true);
+      // Animate each confetti piece
+      confettiAnims.forEach((anim) => {
+        const randomX = (Math.random() - 0.5) * 400;
+        const randomRotate = Math.random() * 720;
+        const delay = Math.random() * 300;
+
+        Animated.parallel([
+          Animated.timing(anim.translateY, {
+            toValue: height + 100,
+            duration: 2500 + Math.random() * 1000,
+            delay,
+            useNativeDriver: true,
+          }),
+          Animated.timing(anim.translateX, {
+            toValue: randomX,
+            duration: 2500,
+            delay,
+            useNativeDriver: true,
+          }),
+          Animated.timing(anim.rotate, {
+            toValue: randomRotate,
+            duration: 2500,
+            delay,
+            useNativeDriver: true,
+          }),
+          Animated.timing(anim.opacity, {
+            toValue: 0,
+            duration: 2500,
+            delay: delay + 1500,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
+
+      // Hide confetti after animation completes
+      setTimeout(() => setShowConfetti(false), 4000);
+    } else {
+      setShowConfetti(false);
+      // Reset animations
+      confettiAnims.forEach(anim => {
+        anim.translateY.setValue(-50);
+        anim.translateX.setValue(0);
+        anim.rotate.setValue(0);
+        anim.opacity.setValue(1);
+      });
+    }
+  }, [currentStep]);
 
   const updateFormData = (field: keyof StepData, value: string | boolean | null) => {
     setFormData(prev => {
@@ -442,6 +505,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         id_number: formData.idNumber.trim(),
         policy_number: formData.policyNumber,
         profile_picture_path: formData.profilePicturePath || '',
+        address: formData.address.trim(),
         notification_frequency,
         custom_frequency_days: custom_days,
         popia_accepted: formData.popiaAccepted,
@@ -732,6 +796,14 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               keyboardType="numeric"
             />
 
+            <TextInput
+              style={styles.input}
+              placeholder="Address"
+              placeholderTextColor={theme.colors.placeholder}
+              value={formData.address}
+              onChangeText={(value) => updateFormData('address', value)}
+            />
+
             <View style={styles.passwordInputWrapper}>
               <TextInput
                 style={styles.passwordInput}
@@ -935,7 +1007,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 <Text style={styles.infoIconText}>What does an attorney do?</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.selectionQuestion}>Do you have your own attorney?</Text>
+            <Text style={styles.stepSubtitle}>Do you have your own attorney?</Text>
 
             <TouchableOpacity
               style={[
@@ -1062,7 +1134,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 <Text style={styles.infoIconText}>Why do I need an executor?</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.selectionQuestion}>Do you have your own executor?</Text>
+            <Text style={styles.stepSubtitle}>Do you have your own executor?</Text>
 
             <TouchableOpacity
               style={[
@@ -1306,7 +1378,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               ) : (
                 <View style={styles.reviewSection}>
                   <Text style={styles.reviewSectionTitle}>Attorney</Text>
-                  <Text style={styles.reviewItem}>MiWill Partner Attorney (To be assigned)</Text>
+                  <Text style={styles.reviewItem}>MiWill Partner</Text>
                 </View>
               )}
 
@@ -1333,7 +1405,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               ) : (
                 <View style={styles.reviewSection}>
                   <Text style={styles.reviewSectionTitle}>Executor</Text>
-                  <Text style={styles.reviewItem}>MiWill Executor (To be assigned)</Text>
+                  <Text style={styles.reviewItem}>MiWill Partner</Text>
                 </View>
               )}
 
@@ -1360,7 +1432,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             <View style={styles.completionContainer}>
               <Image
                 source={require('../../assets/logo1.png')}
-                style={styles.completionLogo}
+                style={styles.completionLogoBig}
                 resizeMode="contain"
               />
               <View style={styles.iconContainer}>
@@ -1382,6 +1454,38 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      {showConfetti && (
+        <View style={styles.confettiContainer} pointerEvents="none">
+          {confettiAnims.map((anim, index) => (
+            <Animated.View
+              key={index}
+              style={[
+                styles.confettiPiece,
+                {
+                  left: `${(index % 10) * 10 + 5}%`,
+                  backgroundColor: [
+                    theme.colors.primary,
+                    theme.colors.success,
+                    theme.colors.info,
+                    '#FFD700',
+                    '#FF6B9D',
+                    '#C9A3FF',
+                  ][index % 6],
+                  transform: [
+                    { translateY: anim.translateY },
+                    { translateX: anim.translateX },
+                    { rotate: anim.rotate.interpolate({
+                      inputRange: [0, 360],
+                      outputRange: ['0deg', '360deg'],
+                    }) },
+                  ],
+                  opacity: anim.opacity,
+                },
+              ]}
+            />
+          ))}
+        </View>
+      )}
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -1445,7 +1549,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>MiWill Partner Attorney</Text>
             <Text style={styles.modalBody}>
-              By selecting "No," you agree to have a qualified and vetted attorney from our MiWill Partner network assigned to manage your estate. This service is provided at no additional cost and ensures your affairs are handled professionally.
+              By selecting "No," you agree to have a qualified and vetted Legal Personnel from our MiWill Partner network assigned to manage your estate. This service is provided at no additional cost and ensures your affairs are handled professionally.
             </Text>
             <View style={styles.checkboxContainer}>
               <TouchableOpacity
@@ -1652,7 +1756,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             <Text style={styles.modalTitle}>Why an Attorney Matters</Text>
             <ScrollView style={styles.modalScroll}>
               <Text style={styles.modalBody}>
-                An attorney ensures your will and estate instructions are legally sound, up to date, and enforceable.
+                Your attorney, or a MiWill attorney ensures your will and estate instructions are legally sound, up to date, and enforceable.
                 They advise on asset protection, draft or update legal documents, and act as your legal representative if disputes arise.
               </Text>
             </ScrollView>
@@ -1678,7 +1782,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             <Text style={styles.modalTitle}>Executor Responsibilities</Text>
             <ScrollView style={styles.modalScroll}>
               <Text style={styles.modalBody}>
-                An executor carries out your wishes after you pass away. They secure assets, pay outstanding debts and taxes,
+                Your executor or a MiWill executor carries out your wishes after you pass away. They secure assets, pay outstanding debts and taxes,
                 file required reports, and distribute inheritances to your beneficiaries. Choosing a trusted executor ensures
                 your estate is administered smoothly and according to your instructions.
               </Text>
@@ -1711,8 +1815,9 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 • Collecting personal, beneficiary, executor, and attorney details strictly for
                 succession planning purposes.
                 {'\n'}
-                • Storing this information securely within South Africa and limiting access to
-                authorised parties that you nominate, such as executors and trusted contacts.
+                • Storing this information securely within South Africa and sharing it with
+                authorised MiWill Partners, including attorneys, executors, and XS Card Partners,
+                as well as trusted contacts that you nominate.
                 {'\n'}
                 • Using your data to deliver estate-related notifications, proof-of-life checks,
                 and legal documentation storage services.
@@ -1761,8 +1866,10 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 to store and process them to support estate administration and share them with
                 authorised parties you select.
                 {'\n'}
-                • MiWill adheres to South African data and estate regulations but cannot guarantee
-                the enforceability of documents that are not witnessed or executed according to law.
+                • MiWill complies with South African estate planning regulations. MiWill will
+                auto-transcribe your will in a legally structured manner with confirmation from
+                the authorised Partners and will be sent to you for signing and return (one copy
+                will be stored in the MiWill Partner Vault and a copy remains with you).
                 {'\n'}
                 • Any misuse of the platform, fraudulent activity, or violation of these terms may
                 result in suspension and possible legal action.
@@ -2081,6 +2188,11 @@ const styles = StyleSheet.create({
     height: 80,
     marginBottom: theme.spacing.lg,
   },
+  completionLogoBig: {
+    width: 200,
+    height: 140,
+    marginBottom: theme.spacing.lg,
+  },
   completionTitle: {
     fontSize: theme.typography.sizes.xxxl,
     fontWeight: theme.typography.weights.bold as any,
@@ -2305,6 +2417,20 @@ const styles = StyleSheet.create({
     color: theme.colors.buttonText,
     fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.semibold as any,
+  },
+  confettiContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+  },
+  confettiPiece: {
+    position: 'absolute',
+    width: 10,
+    height: 10,
+    borderRadius: 2,
   },
 });
 

@@ -54,7 +54,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     useState<Record<string, BeneficiaryInformation[]>>({});
   const [expandedAssets, setExpandedAssets] = useState<Record<string, boolean>>({});
   const [expandedPolicies, setExpandedPolicies] = useState<Record<string, boolean>>({});
-  const [selectedManagement, setSelectedManagement] = useState<'assets' | 'policies' | null>(null);
+  const [selectedManagement, setSelectedManagement] = useState<'assets' | 'policies' | 'all' | null>(null);
   const [showBeneficiariesModal, setShowBeneficiariesModal] = useState(false);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [hasAttorneyNotification, setHasAttorneyNotification] = useState(false);
@@ -880,6 +880,41 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     </View>
   );
 
+  const renderAllItemsManager = () => {
+    // Combine assets and policies and sort by created_at (latest first)
+    const allItems = [
+      ...assets.map(asset => ({ ...asset, type: 'asset' as const })),
+      ...policies.map(policy => ({ ...policy, type: 'policy' as const }))
+    ].sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA; // Latest first
+    });
+
+    return (
+      <View style={styles.managementSection}>
+        <Text style={styles.managementToggleTitle}>All Assets & Policies ({allItems.length})</Text>
+        <View style={styles.managementList}>
+          {allItems.length === 0 ? (
+            <TouchableOpacity 
+              style={styles.managementEmptyButton}
+              onPress={() => navigation.navigate('AddAsset')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.managementEmptyText}>No assets or policies added yet</Text>
+            </TouchableOpacity>
+          ) : (
+            allItems.map((item) => 
+              item.type === 'asset' 
+                ? renderAssetCard(item as AssetInformation)
+                : renderPolicyCard(item as PolicyInformation)
+            )
+          )}
+        </View>
+      </View>
+    );
+  };
+
   // Refresh data when screen comes into focus
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
@@ -970,15 +1005,24 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           </View>
         </View>
 
-        <View style={styles.assetsPoliciesPill}>
+        <TouchableOpacity 
+          style={styles.assetsPoliciesPill}
+          onPress={() => {
+            if (assetsCount > 0 || policiesCount > 0) {
+              setSelectedManagement(prev => (prev === 'all' ? null : 'all'));
+            }
+          }}
+          activeOpacity={assetsCount > 0 || policiesCount > 0 ? 0.7 : 1}
+        >
           <TouchableOpacity
             style={[
               styles.assetsPoliciesTab,
               selectedManagement === 'assets' && styles.assetsPoliciesTabActive,
             ]}
-            onPress={() =>
-              setSelectedManagement(prev => (prev === 'assets' ? null : 'assets'))
-            }
+            onPress={(e) => {
+              e.stopPropagation();
+              setSelectedManagement(prev => (prev === 'assets' ? null : 'assets'));
+            }}
           >
             <Text
               style={[
@@ -997,9 +1041,10 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               styles.assetsPoliciesTab,
               selectedManagement === 'policies' && styles.assetsPoliciesTabActive,
             ]}
-            onPress={() =>
-              setSelectedManagement(prev => (prev === 'policies' ? null : 'policies'))
-            }
+            onPress={(e) => {
+              e.stopPropagation();
+              setSelectedManagement(prev => (prev === 'policies' ? null : 'policies'));
+            }}
           >
             <Text
               style={[
@@ -1010,10 +1055,23 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               Policies
             </Text>
           </TouchableOpacity>
-        </View>
+
+          {(assetsCount > 0 || policiesCount > 0) && (
+            <TouchableOpacity
+              style={styles.assetsPoliciesInfoButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                setSelectedManagement(prev => (prev === 'all' ? null : 'all'));
+              }}
+            >
+              <Ionicons name="information-circle-outline" size={24} color={theme.colors.primary} />
+            </TouchableOpacity>
+          )}
+        </TouchableOpacity>
 
         {selectedManagement === 'assets' && renderAssetsManager()}
         {selectedManagement === 'policies' && renderPoliciesManager()}
+        {selectedManagement === 'all' && renderAllItemsManager()}
 
         {/* Action Buttons */}
         <View style={styles.actionsContainer}>
@@ -1491,6 +1549,11 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.weights.bold as any,
     color: theme.colors.primary,
     marginHorizontal: theme.spacing.sm,
+  },
+  assetsPoliciesInfoButton: {
+    position: 'absolute',
+    right: theme.spacing.md,
+    padding: theme.spacing.xs,
   },
   managementSection: {
     paddingHorizontal: theme.spacing.xl,
