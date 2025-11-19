@@ -201,6 +201,14 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
   const [documentSource, setDocumentSource] = useState<{ html?: string; uri?: string } | null>(null);
   const [documentLoading, setDocumentLoading] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [showSupersedeModal, setShowSupersedeModal] = useState(false);
+  const [_pendingSave, setPendingSave] = useState<{ type: 'file' | 'video' | 'audio'; data: any } | null>(null);
+  const [showTranscribeModal, setShowTranscribeModal] = useState(false);
+  const [transcribeWillType, setTranscribeWillType] = useState<'document' | 'video' | 'audio' | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewSource, setPreviewSource] = useState<{ type: 'file' | 'video' | 'audio'; uri: string; name?: string } | null>(null);
+  const [previewDocumentSource, setPreviewDocumentSource] = useState<{ html?: string; uri?: string } | null>(null);
+  const [previewDocumentLoading, setPreviewDocumentLoading] = useState(false);
 
   const loadExistingWills = useCallback(async () => {
     if (!currentUser) return;
@@ -356,8 +364,13 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       setSelectedVideo(null);
       setSelectedAudio(null);
       setUploadType('file');
-      Alert.alert('AI Assistant', 'Your AI-assisted will draft has been saved and is ready to upload.');
       closeAiAssistant();
+      
+      // Automatically show preview
+      setPreviewSource({ type: 'file', uri: aiFile.uri, name: aiFile.name });
+      setShowPreviewModal(true);
+      // Text files won't have PDF preview, but try anyway
+      await loadPreviewDocument(aiFile.uri);
     } catch (error) {
       console.error('Error saving AI draft:', error);
       Alert.alert('Error', 'Failed to save the AI-assisted will draft.');
@@ -698,15 +711,29 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
     );
   };
 
+  const handleTranscribeClick = (willType: 'document' | 'video' | 'audio') => {
+    setTranscribeWillType(willType);
+    setShowTranscribeModal(true);
+  };
+
   const renderExistingWillCard = (will: WillInformation) => (
     <View key={will.will_id} style={styles.existingWillCard}>
-      <TouchableOpacity
-        style={styles.existingWillDownloadIcon}
-        onPress={() => handleDownloadWill(will)}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="download-outline" size={22} color={theme.colors.primary} />
-      </TouchableOpacity>
+      <View style={styles.existingWillIconActions}>
+        <TouchableOpacity
+          style={styles.existingWillTopIcon}
+          onPress={() => handleDownloadWill(will)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="download-outline" size={20} color={theme.colors.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.existingWillTopIcon}
+          onPress={() => handleTranscribeClick(will.will_type as 'document' | 'video' | 'audio')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chatbubbles-outline" size={20} color={theme.colors.primary} />
+        </TouchableOpacity>
+      </View>
       <View style={styles.existingWillHeader}>
         <View style={styles.existingWillIcon}>
           <Ionicons name={getWillTypeIcon(will)} size={28} color={theme.colors.primary} />
@@ -756,10 +783,17 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
         const asset = result.assets[0];
         const willName = generateWillName();
         const extension = asset.name?.split('.').pop() || 'pdf';
-        setSelectedFile({ ...asset, name: `${willName}.${extension}` });
+        const fileData = { ...asset, name: `${willName}.${extension}` };
+        setSelectedFile(fileData);
         setUploadType('file');
         setSelectedVideo(null);
         setSelectedAudio(null);
+        
+        // Automatically show preview
+        setPreviewSource({ type: 'file', uri: fileData.uri, name: fileData.name });
+        setShowPreviewModal(true);
+        // Load document preview for PDFs
+        await loadPreviewDocument(fileData.uri);
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to pick document');
@@ -783,10 +817,15 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         const willName = generateWillName();
-        setSelectedVideo({ ...asset, fileName: `${willName}.mp4` });
+        const videoData = { ...asset, fileName: `${willName}.mp4` };
+        setSelectedVideo(videoData);
         setUploadType('video');
         setSelectedFile(null);
         setSelectedAudio(null);
+        
+        // Automatically show preview
+        setPreviewSource({ type: 'video', uri: videoData.uri, name: videoData.fileName });
+        setShowPreviewModal(true);
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to pick video');
@@ -810,10 +849,15 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         const willName = generateWillName();
-        setSelectedVideo({ ...asset, fileName: `${willName}.mp4` });
+        const videoData = { ...asset, fileName: `${willName}.mp4` };
+        setSelectedVideo(videoData);
         setUploadType('video');
         setSelectedFile(null);
         setSelectedAudio(null);
+        
+        // Automatically show preview
+        setPreviewSource({ type: 'video', uri: videoData.uri, name: videoData.fileName });
+        setShowPreviewModal(true);
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to record video');
@@ -875,11 +919,21 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       setIsRecording(false);
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
-      const willName = generateWillName();
       
-      setSelectedAudio({ uri, name: `${willName}.m4a` });
+      if (!uri) {
+        Alert.alert('Error', 'Failed to get recording URI');
+        return;
+      }
+      
+      const willName = generateWillName();
+      const audioData = { uri, name: `${willName}.m4a` };
+      setSelectedAudio(audioData);
       setUploadType('audio');
       setRecording(null);
+      
+      // Automatically show preview
+      setPreviewSource({ type: 'audio', uri: audioData.uri, name: audioData.name });
+      setShowPreviewModal(true);
     } catch (error) {
       Alert.alert('Error', 'Failed to stop recording');
       console.error('Failed to stop recording', error);
@@ -897,10 +951,15 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
         const asset = result.assets[0];
         const willName = generateWillName();
         const extension = asset.name?.split('.').pop() || 'm4a';
-        setSelectedAudio({ ...asset, name: `${willName}.${extension}` });
+        const audioData = { ...asset, name: `${willName}.${extension}` };
+        setSelectedAudio(audioData);
         setUploadType('audio');
         setSelectedFile(null);
         setSelectedVideo(null);
+        
+        // Automatically show preview
+        setPreviewSource({ type: 'audio', uri: audioData.uri, name: audioData.name });
+        setShowPreviewModal(true);
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to pick audio file');
@@ -913,8 +972,32 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       return;
     }
 
-    try {
+    // Check if there's an existing will - if so, show supersede modal
+    if (existingWills.length > 0) {
     if (uploadType === 'file' && selectedFile) {
+        setPendingSave({ type: 'file', data: selectedFile });
+        setShowSupersedeModal(true);
+        return;
+      } else if (uploadType === 'video' && selectedVideo) {
+        setPendingSave({ type: 'video', data: selectedVideo });
+        setShowSupersedeModal(true);
+        return;
+      } else if (uploadType === 'audio' && selectedAudio) {
+        setPendingSave({ type: 'audio', data: selectedAudio });
+        setShowSupersedeModal(true);
+        return;
+      }
+    }
+
+    // No existing will, proceed normally
+    await performSave();
+  };
+
+  const performSave = async () => {
+    if (!currentUser) return;
+
+    try {
+      if (uploadType === 'file' && selectedFile) {
         const willName = selectedFile.name || generateWillName();
       // TODO: Upload file to Firebase Storage
         await WillService.createWill({
@@ -977,6 +1060,121 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to save will');
     }
+  };
+
+  const confirmSupersede = async () => {
+    setShowSupersedeModal(false);
+    await performSave();
+    setPendingSave(null);
+  };
+
+  const cancelSupersede = () => {
+    setShowSupersedeModal(false);
+    setPendingSave(null);
+  };
+
+  const loadPreviewDocument = async (uri: string) => {
+    setPreviewDocumentLoading(true);
+    setPreviewDocumentSource(null);
+
+    try {
+      const extension = uri.split('.').pop()?.toLowerCase() || 'pdf';
+      
+      if (extension !== 'pdf') {
+        // For non-PDF files, don't load preview
+        setPreviewDocumentLoading(false);
+        return;
+      }
+
+      const fileInfo = await FileSystemLegacy.getInfoAsync(uri);
+      if (!fileInfo.exists) {
+        Alert.alert('Error', 'Document file not found.');
+        setPreviewDocumentLoading(false);
+        return;
+      }
+
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      if (fileInfo.size && fileInfo.size > maxSize) {
+        Alert.alert(
+          'File Too Large',
+          'This file is too large to preview. It will be uploaded securely.',
+          [{ text: 'OK' }]
+        );
+        setPreviewDocumentLoading(false);
+        return;
+      }
+
+      const base64 = await FileSystemLegacy.readAsStringAsync(uri, {
+        encoding: 'base64' as any,
+      });
+
+      if (!base64 || base64.length === 0) {
+        throw new Error('Unable to read document content.');
+      }
+
+      const sanitizedBase64 = base64.replace(/(\r\n|\n|\r)/gm, '');
+      const pdfHtml = PDF_HTML_WRAPPER(sanitizedBase64);
+      setPreviewDocumentSource({ html: pdfHtml });
+    } catch (error: any) {
+      console.error('Error preparing document for preview:', error);
+      // Don't show alert, just fail silently and show fallback UI
+    } finally {
+      setPreviewDocumentLoading(false);
+    }
+  };
+
+  const handlePreviewSelected = async () => {
+    if (selectedFile) {
+      setPreviewSource({ type: 'file', uri: selectedFile.uri, name: selectedFile.name });
+      setShowPreviewModal(true);
+      // Load document preview for PDFs
+      await loadPreviewDocument(selectedFile.uri);
+    } else if (selectedVideo) {
+      setPreviewSource({ type: 'video', uri: selectedVideo.uri, name: selectedVideo.fileName });
+      setShowPreviewModal(true);
+    } else if (selectedAudio) {
+      setPreviewSource({ type: 'audio', uri: selectedAudio.uri, name: selectedAudio.name });
+      setShowPreviewModal(true);
+    }
+  };
+
+  const handleCancelUpload = () => {
+    Alert.alert(
+      'Cancel Upload',
+      'Are you sure you want to cancel? Your selected file will be removed.',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: () => {
+            setSelectedFile(null);
+            setSelectedVideo(null);
+            setSelectedAudio(null);
+            setUploadType(null);
+            setShowPreviewModal(false);
+            setPreviewSource(null);
+          },
+        },
+      ]
+    );
+  };
+
+  const closePreviewModal = async () => {
+    // Stop audio if playing
+    if (audioSound) {
+      try {
+        await audioSound.unloadAsync();
+      } catch (error) {
+        console.error('Error unloading audio:', error);
+      }
+      setAudioSound(null);
+      setIsPlaying(false);
+    }
+    setShowPreviewModal(false);
+    setPreviewSource(null);
+    setPreviewDocumentSource(null);
+    setPreviewDocumentLoading(false);
   };
 
   const renderMainContent = () => (
@@ -1094,31 +1292,50 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
 
           {(selectedFile || selectedVideo || selectedAudio) && (
             <View style={styles.infoBox}>
-              <Ionicons name="information-circle" size={24} color={theme.colors.info} />
+              <Ionicons name="checkmark-circle" size={24} color={theme.colors.success} />
               <Text style={styles.infoText}>
                 {uploadType === 'file'
-                  ? 'Your will document will be securely stored and encrypted.'
+                  ? 'Document selected and ready to upload. Your will document will be securely stored and encrypted.'
                   : uploadType === 'video'
-                  ? 'Your video will be securely stored. Make sure to clearly state who receives what.'
-                  : 'Your audio will be securely stored. Make sure to clearly state who receives what.'}
+                  ? 'Video selected and ready to upload. Your video will be securely stored. Make sure it clearly states who receives what.'
+                  : 'Audio selected and ready to upload. Your audio will be securely stored. Make sure it clearly states who receives what.'}
               </Text>
             </View>
           )}
         </ScrollView>
 
         <View style={styles.footer}>
-          <TouchableOpacity
-            style={[
-              styles.saveButton,
-            (!selectedFile && !selectedVideo && !selectedAudio) && styles.saveButtonDisabled,
-            ]}
-            onPress={handleSave}
-          disabled={!selectedFile && !selectedVideo && !selectedAudio || isRecording}
-          >
-          <Text style={styles.saveButtonText}>
-            {hasExistingWill ? 'Update Will' : 'Upload Will'}
-          </Text>
-          </TouchableOpacity>
+          {(selectedFile || selectedVideo || selectedAudio) && (
+            <View style={styles.footerButtonRow}>
+              <TouchableOpacity
+                style={styles.previewAgainButton}
+                onPress={handlePreviewSelected}
+              >
+                <Ionicons name="eye-outline" size={20} color={theme.colors.primary} />
+                <Text style={styles.previewAgainButtonText}>Preview</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.uploadButton}
+                onPress={handleSave}
+                disabled={isRecording}
+              >
+                <Ionicons name="cloud-upload-outline" size={20} color={theme.colors.buttonText} />
+                <Text style={styles.saveButtonText}>
+                  {hasExistingWill ? 'Update Will' : 'Upload Will'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {(!selectedFile && !selectedVideo && !selectedAudio) && (
+            <TouchableOpacity
+              style={[styles.saveButton, styles.saveButtonDisabled]}
+              disabled
+            >
+              <Text style={styles.saveButtonText}>
+                Select a file to continue
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
   );
@@ -1185,8 +1402,8 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
                 </ScrollView>
 
                 <View style={styles.aiControls}>
-                  <TouchableOpacity
-                    style={[
+          <TouchableOpacity
+            style={[
                       styles.aiControlButton,
                       aiCurrentStep === 0 && styles.aiControlButtonDisabled,
                     ]}
@@ -1207,8 +1424,8 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
                   >
                     <Text style={styles.aiControlButtonText}>Next</Text>
                     <Ionicons name="arrow-forward" size={20} color={theme.colors.buttonText} />
-                  </TouchableOpacity>
-                </View>
+          </TouchableOpacity>
+        </View>
 
                 <TouchableOpacity style={styles.aiSaveButton} onPress={saveAiDraft}>
                   <Ionicons name="save-outline" size={22} color={theme.colors.buttonText} />
@@ -1216,7 +1433,7 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
                 </TouchableOpacity>
               </>
             )}
-          </View>
+      </View>
         </View>
       </Modal>
 
@@ -1356,6 +1573,315 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
           })()}
         </SafeAreaView>
       </Modal>
+
+      {/* Supersede Will Modal */}
+      <Modal
+        visible={showSupersedeModal}
+        animationType="slide"
+        transparent
+        onRequestClose={cancelSupersede}
+      >
+        <View style={styles.supersedeModalOverlay}>
+          <View style={styles.supersedeModalContainer}>
+            <View style={styles.supersedeModalHeader}>
+              <Ionicons name="alert-circle-outline" size={56} color={theme.colors.warning} />
+              <TouchableOpacity
+                style={styles.supersedeModalClose}
+                onPress={cancelSupersede}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.supersedeModalTitle}>Replace Existing Will?</Text>
+            <ScrollView style={styles.supersedeModalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.supersedeModalText}>
+                You currently have <Text style={styles.supersedeModalHighlight}>{existingWills.length} will{existingWills.length > 1 ? 's' : ''}</Text> on record.
+              </Text>
+              <Text style={styles.supersedeModalText}>
+                Uploading this new will will <Text style={styles.supersedeModalHighlight}>supersede your existing will{existingWills.length > 1 ? 's' : ''}</Text> and become your active legal document.
+              </Text>
+              <View style={styles.supersedeModalInfoBox}>
+                <Ionicons name="information-circle" size={20} color={theme.colors.info} />
+                <Text style={styles.supersedeModalInfoText}>
+                  Your previous will{existingWills.length > 1 ? 's' : ''} will remain accessible in your archives.
+                </Text>
+              </View>
+              <Text style={styles.supersedeModalWarning}>
+                Are you sure you want to proceed?
+              </Text>
+            </ScrollView>
+            <View style={styles.supersedeModalButtons}>
+              <TouchableOpacity
+                style={styles.supersedeModalButtonCancel}
+                onPress={cancelSupersede}
+              >
+                <Text style={styles.supersedeModalButtonCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.supersedeModalButtonConfirm}
+                onPress={confirmSupersede}
+              >
+                <Text style={styles.supersedeModalButtonConfirmText}>Yes, Proceed</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Transcribe Modal */}
+      <Modal
+        visible={showTranscribeModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          setShowTranscribeModal(false);
+          setTranscribeWillType(null);
+        }}
+      >
+        <View style={styles.transcribeModalOverlay}>
+          <View style={styles.transcribeModalContainer}>
+            <View style={styles.transcribeModalHeader}>
+              <Ionicons name="chatbubbles" size={48} color={theme.colors.primary} />
+              <TouchableOpacity
+                style={styles.transcribeModalClose}
+                onPress={() => {
+                  setShowTranscribeModal(false);
+                  setTranscribeWillType(null);
+                }}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.transcribeModalTitle}>
+              {transcribeWillType === 'document' 
+                ? 'Document to Audio/Video'
+                : transcribeWillType === 'video'
+                ? 'Video to Text'
+                : 'Audio to Text'}
+            </Text>
+            <ScrollView style={styles.transcribeModalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.transcribeModalText}>
+                {transcribeWillType === 'document'
+                  ? 'Our AI can convert your written will document into an audio narration or video presentation.'
+                  : 'Our AI-powered transcription service can convert your spoken will into a written document.'}
+              </Text>
+              <Text style={styles.transcribeModalText}>
+                {transcribeWillType === 'document'
+                  ? 'This makes your will more accessible and easier to understand for your beneficiaries.'
+                  : 'This feature uses advanced speech recognition technology to accurately capture your spoken will.'}
+              </Text>
+              <View style={styles.transcribeFeatureList}>
+                {transcribeWillType === 'document' ? (
+                  <>
+                    <View style={styles.transcribeFeatureItem}>
+                      <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />
+                      <Text style={styles.transcribeFeatureText}>Natural voice narration</Text>
+                    </View>
+                    <View style={styles.transcribeFeatureItem}>
+                      <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />
+                      <Text style={styles.transcribeFeatureText}>Professional formatting</Text>
+                    </View>
+                    <View style={styles.transcribeFeatureItem}>
+                      <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />
+                      <Text style={styles.transcribeFeatureText}>Multiple voice options</Text>
+                    </View>
+                    <View style={styles.transcribeFeatureItem}>
+                      <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />
+                      <Text style={styles.transcribeFeatureText}>Download as MP4/MP3</Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.transcribeFeatureItem}>
+                      <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />
+                      <Text style={styles.transcribeFeatureText}>Accurate transcription</Text>
+                    </View>
+                    <View style={styles.transcribeFeatureItem}>
+                      <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />
+                      <Text style={styles.transcribeFeatureText}>Speaker identification</Text>
+                    </View>
+                    <View style={styles.transcribeFeatureItem}>
+                      <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />
+                      <Text style={styles.transcribeFeatureText}>Timestamp markers</Text>
+                    </View>
+                    <View style={styles.transcribeFeatureItem}>
+                      <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />
+                      <Text style={styles.transcribeFeatureText}>Download as PDF</Text>
+                    </View>
+                  </>
+                )}
+              </View>
+              <View style={styles.transcribeModalWarningBox}>
+                <Ionicons name="information-circle" size={20} color={theme.colors.info} />
+                <Text style={styles.transcribeModalNote}>
+                  This feature is coming soon and will be available in a future update.
+                </Text>
+              </View>
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.transcribeModalButton}
+              onPress={() => {
+                setShowTranscribeModal(false);
+                setTranscribeWillType(null);
+              }}
+            >
+              <Text style={styles.transcribeModalButtonText}>Got It</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Preview Modal */}
+      <Modal
+        visible={showPreviewModal}
+        animationType="slide"
+        onRequestClose={closePreviewModal}
+      >
+        <SafeAreaView style={styles.previewContainer}>
+          <View style={styles.previewHeader}>
+            <TouchableOpacity
+              onPress={closePreviewModal}
+              style={styles.previewCloseButton}
+            >
+              <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.previewTitle}>
+              {previewSource?.name || 'Preview'}
+            </Text>
+            <TouchableOpacity
+              onPress={handleCancelUpload}
+              style={styles.previewCancelButton}
+            >
+              <Ionicons name="trash-outline" size={22} color={theme.colors.error} />
+            </TouchableOpacity>
+          </View>
+          {previewSource && (() => {
+            switch (previewSource.type) {
+              case 'audio':
+                return (
+                  <View style={styles.previewContent}>
+                    <View style={styles.audioPlayerContainer}>
+                      <Ionicons 
+                        name="musical-notes" 
+                        size={80} 
+                        color={theme.colors.primary} 
+                        style={styles.audioIcon}
+                      />
+                      <Text style={styles.audioFileName}>
+                        {previewSource.name || 'Audio Will'}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.playButton}
+                        onPress={async () => {
+                          if (!audioSound) {
+                            const { sound } = await Audio.Sound.createAsync(
+                              { uri: previewSource.uri },
+                              { shouldPlay: true }
+                            );
+                            setAudioSound(sound);
+                            setIsPlaying(true);
+                            sound.setOnPlaybackStatusUpdate((status) => {
+                              setPlaybackStatus(status);
+                              if (status.isLoaded && status.didJustFinish) {
+                                setIsPlaying(false);
+                              }
+                            });
+                          } else {
+                            if (isPlaying) {
+                              await audioSound.pauseAsync();
+                              setIsPlaying(false);
+                            } else {
+                              await audioSound.playAsync();
+                              setIsPlaying(true);
+                            }
+                          }
+                        }}
+                      >
+                        <Ionicons
+                          name={isPlaying ? 'pause-circle' : 'play-circle'}
+                          size={64}
+                          color={theme.colors.primary}
+                        />
+                      </TouchableOpacity>
+                      {playbackStatus?.isLoaded && (
+                        <Text style={styles.audioTime}>
+                          {formatTime(playbackStatus.positionMillis)} / {formatTime(playbackStatus.durationMillis || 0)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                );
+
+              case 'video':
+                return (
+                  <View style={styles.previewContent}>
+                    <Video
+                      source={{ uri: previewSource.uri }}
+                      style={styles.videoPlayer}
+                      useNativeControls
+                      resizeMode={ResizeMode.CONTAIN}
+                      shouldPlay={false}
+                    />
+                  </View>
+                );
+
+              case 'file':
+              default:
+                if (previewDocumentLoading) {
+                  return (
+                    <View style={styles.previewLoading}>
+                      <ActivityIndicator size="large" color={theme.colors.primary} />
+                      <Text style={styles.previewLoadingText}>Loading document preview...</Text>
+                    </View>
+                  );
+                }
+
+                if (previewDocumentSource?.html) {
+                  // Show PDF preview
+                  return (
+                    <WebView
+                      originWhitelist={['*']}
+                      source={{ html: previewDocumentSource.html }}
+                      style={styles.previewWebView}
+                      startInLoadingState
+                      javaScriptEnabled
+                      domStorageEnabled
+                      renderLoading={() => (
+                        <View style={styles.previewLoading}>
+                          <ActivityIndicator size="large" color={theme.colors.primary} />
+                        </View>
+                      )}
+                      onError={syntheticEvent => {
+                        const { nativeEvent } = syntheticEvent;
+                        console.error('WebView error: ', nativeEvent);
+                        Alert.alert(
+                          'Preview Error',
+                          'Failed to load the document preview.',
+                          [{ text: 'OK' }]
+                        );
+                      }}
+                    />
+                  );
+                }
+
+                // Fallback for non-PDF or failed preview
+                return (
+                  <View style={styles.previewContent}>
+                    <View style={styles.previewFileContainer}>
+                      <Ionicons name="document-text" size={80} color={theme.colors.primary} />
+                      <Text style={styles.previewFileName}>{previewSource.name || 'Document Will'}</Text>
+                      <Text style={styles.previewFileNote}>
+                        {previewSource.name?.endsWith('.pdf') 
+                          ? 'PDF preview is loading... The file will be uploaded securely.'
+                          : 'Preview is not available for this file type. The file will be uploaded securely.'}
+                      </Text>
+                    </View>
+                  </View>
+                );
+            }
+          })()}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1473,12 +1999,21 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     position: 'relative',
   },
-  existingWillDownloadIcon: {
+  existingWillIconActions: {
     position: 'absolute',
     top: theme.spacing.md,
     right: theme.spacing.md,
     zIndex: 10,
-    padding: theme.spacing.xs,
+    flexDirection: 'row',
+    gap: theme.spacing.xs,
+  },
+  existingWillTopIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.colors.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   existingWillHeader: {
     flexDirection: 'row',
@@ -1576,12 +2111,78 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
   },
+  previewCancelContainer: {
+    flexDirection: 'row',
+    marginTop: theme.spacing.md,
+    gap: theme.spacing.md,
+  },
+  previewButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.lg,
+    paddingVertical: theme.spacing.md,
+    gap: theme.spacing.xs,
+  },
+  previewButtonText: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.buttonText,
+  },
+  cancelButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.error,
+    borderRadius: theme.borderRadius.lg,
+    paddingVertical: theme.spacing.md,
+    gap: theme.spacing.xs,
+  },
+  cancelButtonText: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.buttonText,
+  },
   footer: {
     paddingHorizontal: theme.spacing.xl,
     paddingBottom: theme.spacing.xl,
     paddingTop: theme.spacing.md,
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
+  },
+  footerButtonRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.md,
+  },
+  previewAgainButton: {
+    flex: 1,
+    height: 56,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.xl,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+  },
+  previewAgainButtonText: {
+    fontSize: theme.typography.sizes.lg,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.primary,
+  },
+  uploadButton: {
+    flex: 2,
+    height: 56,
+    backgroundColor: theme.colors.buttonPrimary,
+    borderRadius: theme.borderRadius.xl,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
   },
   saveButton: {
     height: 56,
@@ -1748,6 +2349,9 @@ const styles = StyleSheet.create({
   previewCloseButton: {
     padding: theme.spacing.xs,
   },
+  previewCancelButton: {
+    padding: theme.spacing.xs,
+  },
   previewTitle: {
     fontSize: theme.typography.sizes.lg,
     color: theme.colors.text,
@@ -1812,6 +2416,196 @@ const styles = StyleSheet.create({
   videoPlayer: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  supersedeModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  supersedeModalContainer: {
+    backgroundColor: theme.colors.background,
+    borderTopLeftRadius: theme.borderRadius.xxl,
+    borderTopRightRadius: theme.borderRadius.xxl,
+    maxHeight: '75%',
+    paddingTop: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.xl,
+    paddingBottom: theme.spacing.xxl,
+  },
+  supersedeModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing.md,
+  },
+  supersedeModalClose: {
+    padding: theme.spacing.xs,
+  },
+  supersedeModalTitle: {
+    fontSize: theme.typography.sizes.xxl,
+    fontWeight: theme.typography.weights.bold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
+  },
+  supersedeModalScroll: {
+    maxHeight: 300,
+  },
+  supersedeModalText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.text,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.md,
+    marginBottom: theme.spacing.md,
+  },
+  supersedeModalHighlight: {
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.primary,
+  },
+  supersedeModalInfoBox: {
+    flexDirection: 'row',
+    backgroundColor: theme.colors.info + '15',
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    marginVertical: theme.spacing.md,
+    gap: theme.spacing.sm,
+  },
+  supersedeModalInfoText: {
+    flex: 1,
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+  },
+  supersedeModalWarning: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.warning,
+    marginTop: theme.spacing.md,
+  },
+  supersedeModalButtons: {
+    flexDirection: 'row',
+    gap: theme.spacing.md,
+  },
+  supersedeModalButtonCancel: {
+    flex: 1,
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+  },
+  supersedeModalButtonCancelText: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+  },
+  supersedeModalButtonConfirm: {
+    flex: 1,
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.warning,
+    alignItems: 'center',
+  },
+  supersedeModalButtonConfirmText: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.buttonText,
+  },
+  transcribeModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  transcribeModalContainer: {
+    backgroundColor: theme.colors.background,
+    borderTopLeftRadius: theme.borderRadius.xxl,
+    borderTopRightRadius: theme.borderRadius.xxl,
+    maxHeight: '80%',
+    paddingTop: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.xl,
+    paddingBottom: theme.spacing.xxl,
+  },
+  transcribeModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing.md,
+  },
+  transcribeModalClose: {
+    padding: theme.spacing.xs,
+  },
+  transcribeModalTitle: {
+    fontSize: theme.typography.sizes.xxl,
+    fontWeight: theme.typography.weights.bold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
+  },
+  transcribeModalScroll: {
+    maxHeight: 400,
+  },
+  transcribeModalText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.text,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.md,
+    marginBottom: theme.spacing.md,
+  },
+  transcribeFeatureList: {
+    marginVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md,
+  },
+  transcribeFeatureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.sm,
+  },
+  transcribeFeatureText: {
+    marginLeft: theme.spacing.sm,
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
+  },
+  transcribeModalWarningBox: {
+    flexDirection: 'row',
+    backgroundColor: theme.colors.info + '15',
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    marginTop: theme.spacing.lg,
+    gap: theme.spacing.sm,
+  },
+  transcribeModalNote: {
+    flex: 1,
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+  },
+  transcribeModalButton: {
+    width: '100%',
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.buttonPrimary,
+    alignItems: 'center',
+  },
+  transcribeModalButtonText: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.buttonText,
+  },
+  previewFileContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.spacing.xxxl,
+  },
+  previewFileName: {
+    fontSize: theme.typography.sizes.lg,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginTop: theme.spacing.xl,
+    marginBottom: theme.spacing.md,
+    textAlign: 'center',
+  },
+  previewFileNote: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
   },
 });
 

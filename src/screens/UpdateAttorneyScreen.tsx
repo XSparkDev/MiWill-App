@@ -15,6 +15,7 @@ import { theme } from '../config/theme.config';
 import { useAuth } from '../contexts/AuthContext';
 import UserService from '../services/userService';
 import AttorneyService from '../services/attorneyService';
+import NotificationService from '../services/notificationService';
 import { formatSAPhoneNumber } from '../utils/phoneFormatter';
 
 interface UpdateAttorneyScreenProps {
@@ -117,6 +118,27 @@ const UpdateAttorneyScreen: React.FC<UpdateAttorneyScreenProps> = ({ navigation 
         has_own_attorney: true,
         attorney_notification_dismissed: true,
       });
+
+      // Dismiss any MiWill attorney assignment notifications and create success notification
+      try {
+        const notifications = await NotificationService.getUserNotifications(currentUser.uid);
+        const miWillAttorneyNotifications = notifications.filter(
+          n => n.notification_type === 'attorney_assignment' && 
+          n.notification_title.includes('MiWill Partner Attorney')
+        );
+        
+        for (const notification of miWillAttorneyNotifications) {
+          await NotificationService.markAsDismissed(notification.notification_id);
+        }
+        
+        // Create success notification
+        const attorneyName = `${formData.attorneyFirstName.trim()} ${formData.attorneySurname.trim()}`;
+        await NotificationService.createAttorneyUpdateNotification(currentUser.uid, attorneyName);
+        
+        console.log('[UpdateAttorney] Dismissed old notifications and created success notification');
+      } catch (notifError) {
+        console.error('[UpdateAttorney] Error managing notifications:', notifError);
+      }
 
       Alert.alert(
         'Success',

@@ -25,6 +25,7 @@ import UserService from '../services/userService';
 import AttorneyService from '../services/attorneyService';
 import ExecutorService from '../services/executorService';
 import SecondaryContactService from '../services/secondaryContactService';
+import NotificationService from '../services/notificationService';
 import { formatSAPhoneNumber, isValidSAPhoneNumber } from '../utils/phoneFormatter';
 
 const { width, height } = Dimensions.get('window');
@@ -569,7 +570,26 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         });
       }
 
-      // 5) Navigate to dashboard
+      // 5) Create notifications for MiWill attorney/executor assignments
+      if (formData.miWillAttorneyAccepted && !formData.hasOwnAttorney) {
+        try {
+          await NotificationService.createAttorneyNotification(uid);
+          console.log('[Registration] Attorney notification created for user:', uid);
+        } catch (notifError) {
+          console.error('[Registration] Failed to create attorney notification:', notifError);
+        }
+      }
+
+      if (formData.miWillExecutorAccepted && !formData.hasOwnExecutor) {
+        try {
+          await NotificationService.createExecutorNotification(uid);
+          console.log('[Registration] Executor notification created for user:', uid);
+        } catch (notifError) {
+          console.error('[Registration] Failed to create executor notification:', notifError);
+        }
+      }
+
+      // 6) Navigate to dashboard
       navigation.navigate('Dashboard');
     } catch (e: any) {
       console.error('Registration error:', e);
@@ -1340,25 +1360,36 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             <ScrollView style={styles.reviewContainer} nestedScrollEnabled>
               <View style={styles.reviewSection}>
                 <Text style={styles.reviewSectionTitle}>Personal Information</Text>
+                {formData.profilePicturePath && (
+                  <View style={styles.reviewProfileImage}>
+                    <Image
+                      source={{ uri: formData.profilePicturePath }}
+                      style={styles.reviewAvatar}
+                    />
+                  </View>
+                )}
                 <Text style={styles.reviewItem}>Name: {formData.firstName} {formData.surname}</Text>
                 <Text style={styles.reviewItem}>Email: {formData.email}</Text>
                 <Text style={styles.reviewItem}>Phone: {formData.phone}</Text>
-                <Text style={styles.reviewItem}>ID: {formData.idNumber}</Text>
-                <Text style={styles.reviewItem}>Policy: {formData.policyNumber}</Text>
+                <Text style={styles.reviewItem}>ID Number: {formData.idNumber}</Text>
+                <Text style={styles.reviewItem}>Policy Number: {formData.policyNumber}</Text>
+                {formData.address && (
+                  <Text style={styles.reviewItem}>Address: {formData.address}</Text>
+                )}
               </View>
 
               <View style={styles.reviewSection}>
                 <Text style={styles.reviewSectionTitle}>Notification Settings</Text>
                 <Text style={styles.reviewItem}>
-                  Frequency: {formData.notificationFrequency}
-                  {formData.notificationFrequency === 'custom_years' && 
-                    ` (${formData.customYears} year${parseInt(formData.customYears) > 1 ? 's' : ''})`}
+                  Frequency: {formData.notificationFrequency === 'custom_years' 
+                    ? `Every ${formData.customYears} year${parseInt(formData.customYears) > 1 ? 's' : ''}`
+                    : formData.notificationFrequency.charAt(0).toUpperCase() + formData.notificationFrequency.slice(1)}
                 </Text>
               </View>
 
               {formData.hasOwnAttorney ? (
                 <View style={styles.reviewSection}>
-                  <Text style={styles.reviewSectionTitle}>Attorney</Text>
+                  <Text style={styles.reviewSectionTitle}>Attorney Information</Text>
                   <Text style={styles.reviewItem}>
                     Name: {`${formData.attorneyFirstName} ${formData.attorneySurname}`.trim()}
                   </Text>
@@ -1369,7 +1400,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                     <Text style={styles.reviewItem}>Phone: {formData.attorneyPhone}</Text>
                   ) : null}
                   {formData.attorneyFirm ? (
-                    <Text style={styles.reviewItem}>Firm: {formData.attorneyFirm}</Text>
+                    <Text style={styles.reviewItem}>Law Firm: {formData.attorneyFirm}</Text>
                   ) : null}
                   {formData.attorneyAddress ? (
                     <Text style={styles.reviewItem}>Address: {formData.attorneyAddress}</Text>
@@ -1377,17 +1408,23 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 </View>
               ) : (
                 <View style={styles.reviewSection}>
-                  <Text style={styles.reviewSectionTitle}>Attorney</Text>
-                  <Text style={styles.reviewItem}>MiWill Partner</Text>
+                  <Text style={styles.reviewSectionTitle}>Attorney Information</Text>
+                  <Text style={styles.reviewItem}>
+                    <Ionicons name="shield-checkmark" size={16} color={theme.colors.primary} /> MiWill Partner
+                  </Text>
+                  <Text style={styles.reviewItemNote}>
+                    You can appoint your own attorney anytime from the Dashboard
+                  </Text>
                 </View>
               )}
 
               {formData.hasOwnExecutor ? (
                 <View style={styles.reviewSection}>
-                  <Text style={styles.reviewSectionTitle}>Executor</Text>
+                  <Text style={styles.reviewSectionTitle}>Executor Information</Text>
                   <Text style={styles.reviewItem}>
                     Name: {`${formData.executorFirstName} ${formData.executorSurname}`.trim()}
                   </Text>
+                  <Text style={styles.reviewItem}>Relationship: {formData.executorRelationship}</Text>
                   {formData.executorEmail ? (
                     <Text style={styles.reviewItem}>Email: {formData.executorEmail}</Text>
                   ) : null}
@@ -1397,15 +1434,19 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                   {formData.executorIdNumber ? (
                     <Text style={styles.reviewItem}>ID Number: {formData.executorIdNumber}</Text>
                   ) : null}
-                  <Text style={styles.reviewItem}>Relationship: {formData.executorRelationship}</Text>
                   {formData.executorAddress ? (
                     <Text style={styles.reviewItem}>Address: {formData.executorAddress}</Text>
                   ) : null}
                 </View>
               ) : (
                 <View style={styles.reviewSection}>
-                  <Text style={styles.reviewSectionTitle}>Executor</Text>
-                  <Text style={styles.reviewItem}>MiWill Partner</Text>
+                  <Text style={styles.reviewSectionTitle}>Executor Information</Text>
+                  <Text style={styles.reviewItem}>
+                    <Ionicons name="shield-checkmark" size={16} color={theme.colors.primary} /> MiWill Partner
+                  </Text>
+                  <Text style={styles.reviewItemNote}>
+                    You can appoint your own executor anytime from the Dashboard
+                  </Text>
                 </View>
               )}
 
@@ -2171,6 +2212,23 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.textSecondary,
     marginBottom: theme.spacing.xs,
+  },
+  reviewItemNote: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.textSecondary,
+    fontStyle: 'italic' as any,
+    marginTop: theme.spacing.xs / 2,
+    marginBottom: theme.spacing.xs,
+  },
+  reviewProfileImage: {
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  reviewAvatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: theme.colors.surface,
   },
   validationError: {
     color: theme.colors.error,

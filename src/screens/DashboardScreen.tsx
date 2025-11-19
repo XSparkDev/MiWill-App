@@ -23,10 +23,12 @@ import AssetService from '../services/assetService';
 import PolicyService from '../services/policyService';
 import BeneficiaryService from '../services/beneficiaryService';
 import WillService from '../services/willService';
+import NotificationService from '../services/notificationService';
 import { UserProfile } from '../types/user';
 import { AssetInformation } from '../types/asset';
 import { PolicyInformation } from '../types/policy';
 import { BeneficiaryInformation } from '../types/beneficiary';
+import { NotificationInformation } from '../types/notification';
 import { formatSAPhoneNumber, isValidSAPhoneNumber } from '../utils/phoneFormatter';
 
 interface DashboardScreenProps {
@@ -57,8 +59,11 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const [selectedManagement, setSelectedManagement] = useState<'assets' | 'policies' | 'all' | null>(null);
   const [showBeneficiariesModal, setShowBeneficiariesModal] = useState(false);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [notificationTab, setNotificationTab] = useState<'new' | 'older'>('new');
   const [hasAttorneyNotification, setHasAttorneyNotification] = useState(false);
   const [hasExecutorNotification, setHasExecutorNotification] = useState(false);
+  const [newNotifications, setNewNotifications] = useState<NotificationInformation[]>([]);
+  const [olderNotifications, setOlderNotifications] = useState<NotificationInformation[]>([]);
   const [inlineTarget, setInlineTarget] =
     useState<{ type: 'asset' | 'policy'; id: string } | null>(null);
   const [inlineForm, setInlineForm] = useState({
@@ -164,23 +169,41 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       const profile = await UserService.getUserById(currentUser.uid);
       setUserProfile(profile);
 
-      // Check for attorney/executor notifications
-      if (profile) {
-        const hasOwnAttorney = profile.has_own_attorney ?? false;
-        const hasOwnExecutor = profile.has_own_executor ?? false;
-        const miWillAttorneyAccepted = profile.miwill_attorney_accepted ?? false;
-        const miWillExecutorAccepted = profile.miwill_executor_accepted ?? false;
-        const attorneyDismissed = profile.attorney_notification_dismissed ?? false;
-        const executorDismissed = profile.executor_notification_dismissed ?? false;
+      // Load notifications from the new notification system
+      try {
+        const newNotifs = await NotificationService.getNewNotifications(currentUser.uid);
+        setNewNotifications(newNotifs);
 
-        const needsAttorneyNotification =
-          !hasOwnAttorney && miWillAttorneyAccepted && !attorneyDismissed;
+        const olderNotifs = await NotificationService.getOlderNotifications(currentUser.uid);
+        setOlderNotifications(olderNotifs);
 
-        const needsExecutorNotification =
-          !hasOwnExecutor && miWillExecutorAccepted && !executorDismissed;
+        // Check if there are attorney/executor notifications in the new system
+        const hasAttorney = newNotifs.some(n => n.notification_type === 'attorney_assignment' && !n.is_dismissed);
+        const hasExecutor = newNotifs.some(n => n.notification_type === 'executor_assignment' && !n.is_dismissed);
+        
+        setHasAttorneyNotification(hasAttorney);
+        setHasExecutorNotification(hasExecutor);
+      } catch (notifError) {
+        console.error('Error loading notifications:', notifError);
+        
+        // Fallback to old system if new notification system fails
+        if (profile) {
+          const hasOwnAttorney = profile.has_own_attorney ?? false;
+          const hasOwnExecutor = profile.has_own_executor ?? false;
+          const miWillAttorneyAccepted = profile.miwill_attorney_accepted ?? false;
+          const miWillExecutorAccepted = profile.miwill_executor_accepted ?? false;
+          const attorneyDismissed = profile.attorney_notification_dismissed ?? false;
+          const executorDismissed = profile.executor_notification_dismissed ?? false;
 
-        setHasAttorneyNotification(needsAttorneyNotification);
-        setHasExecutorNotification(needsExecutorNotification);
+          const needsAttorneyNotification =
+            !hasOwnAttorney && miWillAttorneyAccepted && !attorneyDismissed;
+
+          const needsExecutorNotification =
+            !hasOwnExecutor && miWillExecutorAccepted && !executorDismissed;
+
+          setHasAttorneyNotification(needsAttorneyNotification);
+          setHasExecutorNotification(needsExecutorNotification);
+        }
       }
 
       // Fetch assets
@@ -948,7 +971,10 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           />
           <View style={styles.headerButtons}>
             <TouchableOpacity 
-              onPress={() => setShowNotificationModal(true)} 
+              onPress={() => {
+                setNotificationTab('new');
+                setShowNotificationModal(true);
+              }} 
               style={styles.notificationBellButton}
             >
               <Ionicons name="notifications" size={30} color={theme.colors.primary} />
@@ -1284,110 +1310,188 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               </TouchableOpacity>
             </View>
 
+            {/* Tabs */}
+            <View style={styles.notificationTabs}>
+              <TouchableOpacity
+                style={[
+                  styles.notificationTab,
+                  notificationTab === 'new' && styles.notificationTabActive,
+                ]}
+                onPress={() => setNotificationTab('new')}
+              >
+                <Text
+                  style={[
+                    styles.notificationTabText,
+                    notificationTab === 'new' && styles.notificationTabTextActive,
+                  ]}
+                >
+                  New {newNotifications.length > 0 && `(${newNotifications.length})`}
+                </Text>
+                {notificationTab === 'new' && <View style={styles.notificationTabIndicator} />}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.notificationTab,
+                  notificationTab === 'older' && styles.notificationTabActive,
+                ]}
+                onPress={() => setNotificationTab('older')}
+              >
+                <Text
+                  style={[
+                    styles.notificationTabText,
+                    notificationTab === 'older' && styles.notificationTabTextActive,
+                  ]}
+                >
+                  History {olderNotifications.length > 0 && `(${olderNotifications.length})`}
+                </Text>
+                {notificationTab === 'older' && <View style={styles.notificationTabIndicator} />}
+              </TouchableOpacity>
+            </View>
+
             <ScrollView 
               style={styles.notificationModalScroll}
               showsVerticalScrollIndicator={false}
             >
-              {!hasAttorneyNotification && !hasExecutorNotification ? (
-                <View style={styles.notificationEmptyState}>
-                  <Ionicons name="notifications-off-outline" size={60} color={theme.colors.textSecondary} />
-                  <Text style={styles.notificationEmptyText}>No new notifications</Text>
-                </View>
+              {notificationTab === 'new' ? (
+                // New Notifications Tab
+                newNotifications.length === 0 ? (
+                  <View style={styles.notificationEmptyState}>
+                    <Ionicons name="notifications-outline" size={60} color={theme.colors.textSecondary} />
+                    <Text style={styles.notificationEmptyText}>No new notifications</Text>
+                    <Text style={styles.notificationEmptySubtext}>You're all caught up!</Text>
+                  </View>
+                ) : (
+                  newNotifications.map((notification) => (
+                    <View key={notification.notification_id} style={styles.notificationCard}>
+                      <View style={styles.notificationIconContainer}>
+                        <Ionicons 
+                          name={notification.priority === 'urgent' ? 'alert-circle' : 'information-circle'} 
+                          size={24} 
+                          color={notification.priority === 'urgent' ? theme.colors.error : theme.colors.primary} 
+                        />
+                      </View>
+                      <View style={styles.notificationContent}>
+                        <Text style={styles.notificationTitle}>{notification.notification_title}</Text>
+                        <Text style={styles.notificationBody}>{notification.notification_message}</Text>
+                        <View style={styles.notificationActions}>
+                          {notification.is_actionable && notification.notification_action && (
+                            <TouchableOpacity
+                              style={styles.notificationButton}
+                              onPress={async () => {
+                                await NotificationService.markAsRead(notification.notification_id);
+                                setShowNotificationModal(false);
+                                
+                                if (notification.notification_action_data?.screen) {
+                                  navigation.navigate(notification.notification_action_data.screen, 
+                                    notification.notification_action_data.params || {});
+                                }
+                                
+                                // Reload notifications
+                                await loadDashboardData();
+                              }}
+                            >
+                              <Text style={styles.notificationButtonText}>
+                                {notification.notification_type === 'attorney_assignment' 
+                                  ? 'Appoint My Own Attorney'
+                                  : notification.notification_type === 'executor_assignment'
+                                  ? 'Appoint My Own Executor'
+                                  : 'View'}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity
+                            style={styles.notificationDismissButton}
+                            onPress={async () => {
+                              try {
+                                await NotificationService.markAsDismissed(notification.notification_id);
+                                await loadDashboardData();
+                              } catch (error) {
+                                console.error('Error dismissing notification:', error);
+                              }
+                            }}
+                          >
+                            <Text style={styles.notificationDismissText}>Dismiss</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  ))
+                )
               ) : (
-                <>
-                  {hasExecutorNotification && (
-                    <View style={styles.notificationCard}>
-                      <View style={styles.notificationIconContainer}>
-                        <Ionicons name="information-circle" size={24} color={theme.colors.info} />
+                // History Tab (Older Notifications)
+                olderNotifications.length === 0 ? (
+                  <View style={styles.notificationEmptyState}>
+                    <Ionicons name="time-outline" size={60} color={theme.colors.textSecondary} />
+                    <Text style={styles.notificationEmptyText}>No history yet</Text>
+                    <Text style={styles.notificationEmptySubtext}>Past notifications will appear here</Text>
+                  </View>
+                ) : (
+                  olderNotifications.map((notification) => (
+                    <View key={notification.notification_id} style={styles.notificationCardHistory}>
+                      <View style={styles.notificationHistoryLeft}>
+                        <View style={styles.notificationHistoryIconContainer}>
+                          <Ionicons 
+                            name={notification.is_read ? 'checkmark-circle' : 'time-outline'} 
+                            size={20} 
+                            color={theme.colors.textSecondary} 
+                          />
+                        </View>
+                        <View style={styles.notificationHistoryDivider} />
                       </View>
-                      <View style={styles.notificationContent}>
-                        <Text style={styles.notificationTitle}>MiWill Executor Assigned</Text>
-                        <Text style={styles.notificationBody}>
-                          You have chosen to use MiWill Executors. If you would like to appoint your own executor, you can do so at any time.
+                      <View style={styles.notificationHistoryContent}>
+                        <Text style={styles.notificationHistoryTitle}>
+                          {notification.notification_title}
                         </Text>
-                        <View style={styles.notificationActions}>
-                          <TouchableOpacity
-                            style={styles.notificationButton}
-                            onPress={async () => {
-                              setShowNotificationModal(false);
-                              // Navigate to Update Executor screen
-                              navigation.navigate('UpdateExecutor');
-                            }}
-                          >
-                            <Text style={styles.notificationButtonText}>Appoint My Own Executor</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.notificationDismissButton}
-                            onPress={async () => {
-                              try {
-                                if (currentUser && userProfile) {
-                                  await UserService.updateUser(currentUser.uid, {
-                                    executor_notification_dismissed: true,
-                                  });
-                                  setHasExecutorNotification(false);
-                                  if (!hasAttorneyNotification) {
-                                    setShowNotificationModal(false);
-                                  }
+                        <Text style={styles.notificationHistoryBody}>
+                          {notification.notification_message}
+                        </Text>
+                        <View style={styles.notificationHistoryActions}>
+                          {notification.is_actionable && notification.notification_action && (
+                            <TouchableOpacity
+                              style={styles.notificationHistoryButton}
+                              onPress={async () => {
+                                await NotificationService.markAsRead(notification.notification_id);
+                                setShowNotificationModal(false);
+                                
+                                if (notification.notification_action_data?.screen) {
+                                  navigation.navigate(notification.notification_action_data.screen, 
+                                    notification.notification_action_data.params || {});
                                 }
-                              } catch (error) {
-                                console.error('Error dismissing notification:', error);
-                              }
-                            }}
-                          >
-                            <Text style={styles.notificationDismissText}>Dismiss</Text>
-                          </TouchableOpacity>
+                                
+                                await loadDashboardData();
+                              }}
+                            >
+                              <Ionicons name="open-outline" size={16} color={theme.colors.primary} />
+                              <Text style={styles.notificationHistoryButtonText}>
+                                {notification.notification_type === 'attorney_assignment' 
+                                  ? notification.notification_title.includes('Successfully') ? 'Update Attorney' : 'Appoint Attorney'
+                                  : notification.notification_type === 'executor_assignment'
+                                  ? notification.notification_title.includes('Successfully') ? 'Update Executor' : 'Appoint Executor'
+                                  : 'View'}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                          {!notification.is_dismissed && (
+                            <TouchableOpacity
+                              style={styles.notificationHistoryDismiss}
+                              onPress={async () => {
+                                try {
+                                  await NotificationService.markAsDismissed(notification.notification_id);
+                                  await loadDashboardData();
+                                } catch (error) {
+                                  console.error('Error dismissing notification:', error);
+                                }
+                              }}
+                            >
+                              <Ionicons name="close-circle-outline" size={16} color={theme.colors.textSecondary} />
+                            </TouchableOpacity>
+                          )}
                         </View>
                       </View>
                     </View>
-                  )}
-
-                  {hasAttorneyNotification && (
-                    <View style={styles.notificationCard}>
-                      <View style={styles.notificationIconContainer}>
-                        <Ionicons name="information-circle" size={24} color={theme.colors.info} />
-                      </View>
-                      <View style={styles.notificationContent}>
-                        <Text style={styles.notificationTitle}>MiWill Partner Attorney Assigned</Text>
-                        <Text style={styles.notificationBody}>
-                          You have chosen to use MiWill Partner Attorneys. If you would like to appoint your own attorney, you can do so at any time.
-                        </Text>
-                        <View style={styles.notificationActions}>
-                          <TouchableOpacity
-                            style={styles.notificationButton}
-                            onPress={async () => {
-                              setShowNotificationModal(false);
-                              // Navigate to Update Attorney screen
-                              navigation.navigate('UpdateAttorney');
-                            }}
-                          >
-                            <Text style={styles.notificationButtonText}>Appoint My Own Attorney</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.notificationDismissButton}
-                            onPress={async () => {
-                              try {
-                                if (currentUser && userProfile) {
-                                  await UserService.updateUser(currentUser.uid, {
-                                    attorney_notification_dismissed: true,
-                                  });
-                                  setHasAttorneyNotification(false);
-                                  if (!hasExecutorNotification) {
-                                    setShowNotificationModal(false);
-                                  }
-                                }
-                              } catch (error) {
-                                console.error('Error dismissing notification:', error);
-                              }
-                            }}
-                          >
-                            <Text style={styles.notificationDismissText}>Dismiss</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    </View>
-                  )}
-
-                </>
+                  ))
+                )
               )}
             </ScrollView>
           </View>
@@ -1965,6 +2069,41 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.weights.semibold as any,
     color: theme.colors.text,
   },
+  notificationTabs: {
+    flexDirection: 'row',
+    paddingHorizontal: theme.spacing.xl,
+    paddingTop: theme.spacing.md,
+    gap: theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  notificationTab: {
+    flex: 1,
+    paddingVertical: theme.spacing.md,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  notificationTabActive: {
+    // Active tab styles
+  },
+  notificationTabText: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.medium as any,
+    color: theme.colors.textSecondary,
+  },
+  notificationTabTextActive: {
+    color: theme.colors.primary,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  notificationTabIndicator: {
+    position: 'absolute',
+    bottom: -1,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 2,
+  },
   notificationModalScroll: {
     paddingHorizontal: theme.spacing.xl,
     paddingTop: theme.spacing.lg,
@@ -1975,8 +2114,14 @@ const styles = StyleSheet.create({
   },
   notificationEmptyText: {
     fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
     color: theme.colors.textSecondary,
     marginTop: theme.spacing.md,
+  },
+  notificationEmptySubtext: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.xs,
   },
   notificationCard: {
     backgroundColor: theme.colors.surface,
@@ -2030,6 +2175,94 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.textSecondary,
     textDecorationLine: 'underline',
+  },
+  notificationSectionTitle: {
+    fontSize: theme.typography.sizes.lg,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginTop: theme.spacing.lg,
+    marginBottom: theme.spacing.sm,
+  },
+  notificationCardOlder: {
+    opacity: 0.7,
+    backgroundColor: theme.colors.surface + '80',
+  },
+  notificationTitleOlder: {
+    color: theme.colors.textSecondary,
+  },
+  notificationBodyOlder: {
+    color: theme.colors.textSecondary,
+  },
+  // History Timeline Styles
+  notificationCardHistory: {
+    flexDirection: 'row',
+    marginBottom: theme.spacing.lg,
+    paddingBottom: theme.spacing.lg,
+  },
+  notificationHistoryLeft: {
+    alignItems: 'center',
+    width: 40,
+    marginRight: theme.spacing.md,
+  },
+  notificationHistoryIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  notificationHistoryDivider: {
+    flex: 1,
+    width: 2,
+    backgroundColor: theme.colors.border,
+    marginTop: theme.spacing.xs,
+  },
+  notificationHistoryContent: {
+    flex: 1,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  notificationHistoryTitle: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  notificationHistoryBody: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+    marginBottom: theme.spacing.md,
+  },
+  notificationHistoryActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  notificationHistoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.primary + '15',
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    gap: theme.spacing.xs,
+    flex: 1,
+  },
+  notificationHistoryButtonText: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.medium as any,
+    color: theme.colors.primary,
+  },
+  notificationHistoryDismiss: {
+    padding: theme.spacing.sm,
   },
 });
 

@@ -638,24 +638,101 @@ We'll create each collection one by one. In Firestore, you can create collection
 
 #### **Collection 17: `notifications`**
 
-**Purpose**: Track all notification deliveries
+**Purpose**: Track all notification deliveries and in-app notifications
 
 1. **Create Collection**: `notifications`
 2. **Document Template Fields**:
    - `notification_id`: string (Auto-ID)
    - `user_id`: string
-   - `notification_type`: string (Options: proof_of_life, escalation_alert, executor_notification, beneficiary_alert, system_update)
-   - `notification_method`: string (Options: email, sms, push_notification)
-   - `recipient_email`: string
-   - `recipient_phone`: string
+   - `notification_type`: string (Options: proof_of_life, escalation_alert, executor_notification, attorney_notification, beneficiary_alert, system_update, will_update, asset_update, policy_update, proof_of_life_reminder)
+   - `notification_category`: string (Options: in_app, email, sms, push_notification) - used to determine where notification appears
+   - `notification_method`: string (Options: email, sms, push_notification) - for external notifications
+   - `recipient_email`: string (optional)
+   - `recipient_phone`: string (optional)
    - `notification_title`: string
    - `notification_body`: string
    - `notification_data`: string (JSON payload)
+   - `notification_action`: string (optional, e.g., "navigate_to_executor_screen", "dismiss") - defines what happens when user clicks
+   - `notification_action_data`: string (optional, JSON with navigation params)
+   - `priority`: string (Options: low, normal, high, urgent) - determines sort order
+   - `is_read`: boolean (default: false) - tracks if user has read the notification
+   - `is_dismissed`: boolean (default: false) - tracks if user dismissed the notification
+   - `is_actionable`: boolean (default: false) - whether notification requires user action
    - `delivery_status`: string (Options: pending, sent, delivered, failed, bounced)
    - `delivery_timestamp`: timestamp (optional)
    - `read_timestamp`: timestamp (optional)
+   - `dismissed_timestamp`: timestamp (optional)
    - `created_at`: timestamp
    - `updated_at`: timestamp
+
+**Important Notes for Notification System:**
+- **In-App Notifications**: Set `notification_category` to `in_app` for notifications that appear in the Dashboard notification bell
+- **Grouping**: Notifications are grouped as "New" (created within last 7 days and unread) and "Older" (older than 7 days or already read)
+- **Badge Count**: Only unread notifications (`is_read: false`) contribute to the notification badge count
+- **Auto-dismiss**: Some notifications (like attorney/executor assignments) can be dismissed, while others (like proof-of-life reminders) cannot be dismissed until acted upon
+- **Attorney/Executor Tracking**: When user chooses MiWill attorneys or executors during registration, create an in-app notification reminding them they can appoint their own at any time
+
+**Example Notification Documents:**
+
+**Attorney Assignment Notification:**
+```json
+{
+  "notification_id": "auto-generated-id",
+  "user_id": "user-123",
+  "notification_type": "attorney_notification",
+  "notification_category": "in_app",
+  "notification_title": "MiWill Attorney Assigned",
+  "notification_body": "You have chosen to use MiWill Partner Attorneys. You can appoint your own attorney at any time from the Dashboard.",
+  "notification_action": "navigate_to_update_attorney",
+  "notification_action_data": "{}",
+  "priority": "normal",
+  "is_read": false,
+  "is_dismissed": false,
+  "is_actionable": true,
+  "delivery_status": "delivered",
+  "created_at": "2025-01-01T10:00:00Z"
+}
+```
+
+**Executor Assignment Notification:**
+```json
+{
+  "notification_id": "auto-generated-id",
+  "user_id": "user-123",
+  "notification_type": "executor_notification",
+  "notification_category": "in_app",
+  "notification_title": "MiWill Executor Assigned",
+  "notification_body": "You have chosen to use MiWill Executors. You can appoint your own executor at any time from the Dashboard.",
+  "notification_action": "navigate_to_update_executor",
+  "notification_action_data": "{}",
+  "priority": "normal",
+  "is_read": false,
+  "is_dismissed": false,
+  "is_actionable": true,
+  "delivery_status": "delivered",
+  "created_at": "2025-01-01T10:00:00Z"
+}
+```
+
+**Proof-of-Life Reminder:**
+```json
+{
+  "notification_id": "auto-generated-id",
+  "user_id": "user-123",
+  "notification_type": "proof_of_life_reminder",
+  "notification_category": "in_app",
+  "notification_title": "Time for Your Check-In",
+  "notification_body": "It's time for your scheduled proof-of-life verification. Please complete your check-in to confirm your well-being.",
+  "notification_action": "navigate_to_proof_of_life",
+  "notification_action_data": "{}",
+  "priority": "high",
+  "is_read": false,
+  "is_dismissed": false,
+  "is_actionable": true,
+  "delivery_status": "delivered",
+  "created_at": "2025-01-15T09:00:00Z"
+}
+```
 
 3. **Click "Save"**
 
@@ -988,6 +1065,12 @@ service cloud.firestore {
       allow create: if isAuthenticated();
     }
     
+    // Notifications Meta - for system initialization (allow read for all authenticated users)
+    match /notifications_meta/{metaId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated(); // Allow initialization by any authenticated user
+    }
+    
     // Audit Logs - users can read their own logs, system can write
     match /audit_logs/{logId} {
       allow read: if isAuthenticated() && 
@@ -1007,6 +1090,8 @@ service cloud.firestore {
 3. **Publish Rules**:
    - Click "Publish" button
    - Rules are now active
+
+> **⚠️ IMPORTANT**: Make sure you include the `notifications_meta` collection rules shown above. This collection is used by the NotificationService to auto-initialize the notifications system. Without these rules, you'll get a "Missing or insufficient permissions" error when the app loads.
 
 ### **Step 6: Configure Storage Security Rules (Future: When Using Firebase Storage)**
 

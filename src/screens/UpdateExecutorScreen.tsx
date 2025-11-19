@@ -15,6 +15,7 @@ import { theme } from '../config/theme.config';
 import { useAuth } from '../contexts/AuthContext';
 import UserService from '../services/userService';
 import ExecutorService from '../services/executorService';
+import NotificationService from '../services/notificationService';
 import { formatSAPhoneNumber } from '../utils/phoneFormatter';
 
 interface UpdateExecutorScreenProps {
@@ -125,6 +126,27 @@ const UpdateExecutorScreen: React.FC<UpdateExecutorScreenProps> = ({ navigation 
         has_own_executor: true,
         executor_notification_dismissed: true,
       });
+
+      // Dismiss any MiWill executor assignment notifications and create success notification
+      try {
+        const notifications = await NotificationService.getUserNotifications(currentUser.uid);
+        const miWillExecutorNotifications = notifications.filter(
+          n => n.notification_type === 'executor_assignment' && 
+          n.notification_title.includes('MiWill Executor')
+        );
+        
+        for (const notification of miWillExecutorNotifications) {
+          await NotificationService.markAsDismissed(notification.notification_id);
+        }
+        
+        // Create success notification
+        const executorName = `${formData.executorFirstName.trim()} ${formData.executorSurname.trim()}`;
+        await NotificationService.createExecutorUpdateNotification(currentUser.uid, executorName);
+        
+        console.log('[UpdateExecutor] Dismissed old notifications and created success notification');
+      } catch (notifError) {
+        console.error('[UpdateExecutor] Error managing notifications:', notifError);
+      }
 
       Alert.alert(
         'Success',
