@@ -25,6 +25,7 @@ import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 import UpdateAttorneyScreen from '../screens/UpdateAttorneyScreen';
 import UpdateExecutorScreen from '../screens/UpdateExecutorScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
+import CODCalculatorScreen from '../screens/CODCalculatorScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -38,6 +39,7 @@ export type RootStackParamList = {
   UpdateProfile: undefined;
   UpdateAttorney: undefined;
   UpdateExecutor: undefined;
+  CODCalculator: undefined;
   Settings: undefined;
   AccountSettings: undefined;
   DocumentsContacts: undefined;
@@ -75,6 +77,7 @@ const AppNavigator: React.FC = () => {
       <Stack.Screen name="UpdateProfile" component={UpdateProfileScreen} />
       <Stack.Screen name="UpdateAttorney" component={UpdateAttorneyScreen} />
       <Stack.Screen name="UpdateExecutor" component={UpdateExecutorScreen} />
+      <Stack.Screen name="CODCalculator" component={CODCalculatorScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
       <Stack.Screen name="DocumentsContacts" component={DocumentsContactsScreen} />

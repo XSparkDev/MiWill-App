@@ -394,10 +394,17 @@ We'll create each collection one by one. In Firestore, you can create collection
    - `asset_id`: string (Auto-ID)
    - `user_id`: string
    - `asset_name`: string
-   - `asset_type`: string (Options: property, vehicle, bank_account, investment, jewelry, artwork, business, other)
+   - `asset_type`: string (Options: property, vehicle, policy, bank_account, investment, jewelry, artwork, business, other)
    - `asset_description`: string (optional)
-   - `asset_value`: number (optional)
-   - `asset_location`: string (optional)
+   - `asset_value`: number (required)
+   - `asset_location`: string (required)
+   - `financing_status`: string (Options: financed, owned) – indicates whether the asset is financed or owned outright
+   - `finance_provider_type`: string (Options when financed: bank, other; value `owned` when the asset is not financed)
+   - `finance_provider_name`: string (required when `finance_provider_type` is `bank`; stores bank/fintech name)
+   - `finance_provider_other`: string (required when `finance_provider_type` is `other`; captures the custom provider name)
+   - `date_purchased`: string (YYYY-MM-DD)
+   - `repayment_term`: string (required when financed; e.g., "60 months")
+   - `paid_up_date`: string (YYYY-MM-DD, required when financed; indicates target paid-up date)
    - `asset_document_url`: string (optional, Firebase Storage URL)
    - `asset_document_name`: string (optional)
    - `is_active`: boolean (default: true)

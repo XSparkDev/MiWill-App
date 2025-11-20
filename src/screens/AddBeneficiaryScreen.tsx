@@ -13,6 +13,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
@@ -29,9 +30,13 @@ const { width } = Dimensions.get('window');
 
 interface AddBeneficiaryScreenProps {
   navigation: any;
+  route?: any;
 }
 
-const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation }) => {
+const isValidEmail = (email: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation, route }) => {
   const { currentUser } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -57,8 +62,17 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [showGuidedExplainer, setShowGuidedExplainer] = useState(false);
+  const fromGuidedFlow = route?.params?.fromGuidedFlow ?? false;
+  const returnToRoute = route?.params?.returnTo;
 
   const totalSteps = 4;
+  useEffect(() => {
+    if (fromGuidedFlow) {
+      setShowGuidedExplainer(true);
+      navigation.setParams?.({ fromGuidedFlow: false });
+    }
+  }, [fromGuidedFlow, navigation]);
 
   type AdditionalBeneficiaryForm = {
     id: string;
@@ -301,8 +315,24 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
       setToast({ message: 'Please specify the relationship.', type: 'error' });
       return;
     }
-    if (phone.trim() && !isValidSAPhoneNumber(phone.trim())) {
+    if (!email.trim()) {
+      setToast({ message: 'Please enter beneficiary email address.', type: 'error' });
+      return;
+    }
+    if (!isValidEmail(email.trim())) {
+      setToast({ message: 'Please enter a valid email address.', type: 'error' });
+      return;
+    }
+    if (!phone.trim()) {
+      setToast({ message: 'Please enter beneficiary phone number.', type: 'error' });
+      return;
+    }
+    if (!isValidSAPhoneNumber(phone.trim())) {
       setToast({ message: 'Please enter a valid South African phone number.', type: 'error' });
+      return;
+    }
+    if (!address.trim()) {
+      setToast({ message: 'Please enter beneficiary address.', type: 'error' });
       return;
     }
 
@@ -313,15 +343,15 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
 
     setInlineAdding(true);
     try {
-      const formattedPhone = phone.trim() ? formatSAPhoneNumber(phone.trim()) : undefined;
+      const formattedPhone = formatSAPhoneNumber(phone.trim());
       const beneficiaryId = await BeneficiaryService.createBeneficiary({
         user_id: currentUser.uid,
         beneficiary_first_name: firstName.trim(),
         beneficiary_surname: surname.trim(),
         beneficiary_name: `${firstName.trim()} ${surname.trim()}`.trim(),
-        beneficiary_email: email.trim() || undefined,
+        beneficiary_email: email.trim(),
         beneficiary_phone: formattedPhone,
-        beneficiary_address: address.trim() || undefined,
+        beneficiary_address: address.trim(),
         relationship_to_user: relationship.trim(),
         is_primary: false,
         is_verified: false,
@@ -345,6 +375,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
               beneficiary_email: email.trim(),
               beneficiary_phone: formattedPhone,
               relationship_to_user: relationship.trim(),
+              beneficiary_address: address.trim(),
             },
           ],
         }));
@@ -366,6 +397,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
               beneficiary_email: email.trim(),
               beneficiary_phone: formattedPhone,
               relationship_to_user: relationship.trim(),
+              beneficiary_address: address.trim(),
             },
           ],
         }));
@@ -484,14 +516,27 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
         setToast({ message: 'Please enter relationship to beneficiary', type: 'error' });
         return;
       }
-      if (
-        formData.beneficiaryPhone.trim() &&
-        !isValidSAPhoneNumber(formData.beneficiaryPhone.trim())
-      ) {
+      if (!formData.beneficiaryEmail.trim()) {
+        setToast({ message: 'Please enter beneficiary email address', type: 'error' });
+        return;
+      }
+      if (!isValidEmail(formData.beneficiaryEmail.trim())) {
+        setToast({ message: 'Please enter a valid email address.', type: 'error' });
+        return;
+      }
+      if (!formData.beneficiaryPhone.trim()) {
+        setToast({ message: 'Please enter beneficiary phone number', type: 'error' });
+        return;
+      }
+      if (!isValidSAPhoneNumber(formData.beneficiaryPhone.trim())) {
         setToast({
           message: 'Please enter a valid South African phone number.',
           type: 'error',
         });
+        return;
+      }
+      if (!formData.beneficiaryAddress.trim()) {
+        setToast({ message: 'Please enter beneficiary address', type: 'error' });
         return;
       }
 
@@ -526,12 +571,37 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
             });
             return;
           }
-          if (
-            additional.phone.trim() &&
-            !isValidSAPhoneNumber(additional.phone.trim())
-          ) {
+          if (!additional.email.trim()) {
+            setToast({
+              message: 'Please enter email for all additional beneficiaries.',
+              type: 'error',
+            });
+            return;
+          }
+          if (!isValidEmail(additional.email.trim())) {
+            setToast({
+              message: 'Please enter valid email addresses for additional beneficiaries.',
+              type: 'error',
+            });
+            return;
+          }
+          if (!additional.phone.trim()) {
+            setToast({
+              message: 'Please enter phone numbers for all additional beneficiaries.',
+              type: 'error',
+            });
+            return;
+          }
+          if (!isValidSAPhoneNumber(additional.phone.trim())) {
             setToast({
               message: 'Please enter valid South African numbers for additional beneficiaries.',
+              type: 'error',
+            });
+            return;
+          }
+          if (!additional.address.trim()) {
+            setToast({
+              message: 'Please enter addresses for all additional beneficiaries.',
               type: 'error',
             });
             return;
@@ -634,18 +704,16 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
           continue;
         }
 
-        const formattedPhone = beneficiary.phone
-          ? formatSAPhoneNumber(beneficiary.phone)
-          : undefined;
+        const formattedPhone = formatSAPhoneNumber(beneficiary.phone);
 
         const beneficiaryId = await BeneficiaryService.createBeneficiary({
           user_id: currentUser.uid,
           beneficiary_first_name: beneficiary.firstName,
           beneficiary_surname: beneficiary.surname,
           beneficiary_name: beneficiary.name,
-          beneficiary_email: beneficiary.email || undefined,
+          beneficiary_email: beneficiary.email,
           beneficiary_phone: formattedPhone,
-          beneficiary_address: beneficiary.address || undefined,
+          beneficiary_address: beneficiary.address,
           relationship_to_user: beneficiary.relationship || formData.relationshipToUser.trim(),
           is_primary: index === 0,
           is_verified: false,
@@ -675,6 +743,16 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
 
       setToast({ message: 'Beneficiary added successfully!', type: 'success' });
       
+      if (returnToRoute) {
+        setTimeout(() => {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: returnToRoute }],
+          });
+        }, 800);
+        return;
+      }
+
       // Navigate back after a short delay
       setTimeout(() => {
         navigation.goBack();
@@ -763,7 +841,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
 
             <TextInput
               style={styles.input}
-              placeholder="Email (Optional)"
+              placeholder="Email Address"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.beneficiaryEmail}
               onChangeText={(value) => updateFormData('beneficiaryEmail', value)}
@@ -773,7 +851,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
 
             <TextInput
               style={styles.input}
-              placeholder="Phone Number (Optional)"
+              placeholder="Phone Number"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.beneficiaryPhone}
               onChangeText={(value) => updateFormData('beneficiaryPhone', value)}
@@ -782,7 +860,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
 
             <TextInput
               style={styles.input}
-              placeholder="Address (Optional)"
+              placeholder="Address"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.beneficiaryAddress}
               onChangeText={(value) => updateFormData('beneficiaryAddress', value)}
@@ -856,7 +934,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                       />
                       <TextInput
                         style={styles.input}
-                        placeholder="Email (Optional)"
+                        placeholder="Email Address"
                         placeholderTextColor={theme.colors.placeholder}
                         value={entry.email}
                         onChangeText={(value) =>
@@ -867,7 +945,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                       />
                       <TextInput
                         style={styles.input}
-                        placeholder="Phone Number (Optional)"
+                        placeholder="Phone Number"
                         placeholderTextColor={theme.colors.placeholder}
                         value={entry.phone}
                         onChangeText={(value) =>
@@ -877,7 +955,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                       />
                       <TextInput
                         style={styles.input}
-                        placeholder="Address (Optional)"
+                        placeholder="Address"
                         placeholderTextColor={theme.colors.placeholder}
                         value={entry.address}
                         onChangeText={(value) =>
@@ -1023,7 +1101,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                           />
                           <TextInput
                             style={styles.input}
-                            placeholder="Email (Optional)"
+                          placeholder="Email Address"
                             placeholderTextColor={theme.colors.placeholder}
                             value={inlineBeneficiaryForm.email}
                             onChangeText={(value) => updateInlineBeneficiaryField('email', value)}
@@ -1032,12 +1110,20 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                           />
                           <TextInput
                             style={styles.input}
-                            placeholder="Phone Number (Optional)"
+                          placeholder="Phone Number"
                             placeholderTextColor={theme.colors.placeholder}
                             value={inlineBeneficiaryForm.phone}
                             onChangeText={(value) => updateInlineBeneficiaryField('phone', value)}
                             keyboardType="phone-pad"
                           />
+                        <TextInput
+                          style={styles.input}
+                          placeholder="Address"
+                          placeholderTextColor={theme.colors.placeholder}
+                          value={inlineBeneficiaryForm.address}
+                          onChangeText={(value) => updateInlineBeneficiaryField('address', value)}
+                          multiline
+                        />
                           <View style={styles.inlineAddActions}>
                             <TouchableOpacity
                               style={styles.inlineCancelButton}
@@ -1197,7 +1283,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                           />
                           <TextInput
                             style={styles.input}
-                            placeholder="Email (Optional)"
+                          placeholder="Email Address"
                             placeholderTextColor={theme.colors.placeholder}
                             value={inlineBeneficiaryForm.email}
                             onChangeText={(value) => updateInlineBeneficiaryField('email', value)}
@@ -1206,12 +1292,20 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                           />
                           <TextInput
                             style={styles.input}
-                            placeholder="Phone Number (Optional)"
+                          placeholder="Phone Number"
                             placeholderTextColor={theme.colors.placeholder}
                             value={inlineBeneficiaryForm.phone}
                             onChangeText={(value) => updateInlineBeneficiaryField('phone', value)}
                             keyboardType="phone-pad"
                           />
+                        <TextInput
+                          style={styles.input}
+                          placeholder="Address"
+                          placeholderTextColor={theme.colors.placeholder}
+                          value={inlineBeneficiaryForm.address}
+                          onChangeText={(value) => updateInlineBeneficiaryField('address', value)}
+                          multiline
+                        />
                           <View style={styles.inlineAddActions}>
                             <TouchableOpacity
                               style={styles.inlineCancelButton}
@@ -1368,20 +1462,9 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
           {renderStep()}
 
           <View style={styles.buttonContainer}>
-            {currentStep > 0 && (
-              <TouchableOpacity 
-                style={styles.backButton} 
-                onPress={previousStep}
-                disabled={saving}
-              >
-                <Text style={styles.backButtonText}>Back</Text>
-              </TouchableOpacity>
-            )}
-
             <TouchableOpacity
               style={[
                 styles.nextButton, 
-                currentStep === 0 && styles.nextButtonFull,
                 saving && styles.nextButtonDisabled
               ]}
               onPress={nextStep}
@@ -1395,9 +1478,42 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation 
                 </Text>
               )}
             </TouchableOpacity>
+
+            {currentStep > 0 && (
+              <TouchableOpacity 
+                style={styles.backButton} 
+                onPress={previousStep}
+                disabled={saving}
+              >
+                <Text style={styles.backButtonText}>Back</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={showGuidedExplainer}
+        onRequestClose={() => setShowGuidedExplainer(false)}
+      >
+        <View style={styles.guidedModalOverlay}>
+          <View style={styles.guidedModalContent}>
+            <Ionicons name="people-circle-outline" size={40} color={theme.colors.primary} />
+            <Text style={styles.guidedModalTitle}>Link beneficiaries</Text>
+            <Text style={styles.guidedModalBody}>
+              Select the assets or policies on each step to assign who should receive them. You can split percentages or add more beneficiaries later.
+            </Text>
+            <TouchableOpacity
+              style={styles.guidedModalButton}
+              onPress={() => setShowGuidedExplainer(false)}
+            >
+              <Text style={styles.guidedModalButtonText}>Let’s start linking</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1568,13 +1684,13 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.xs,
   },
   buttonContainer: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     marginTop: theme.spacing.xl,
     gap: theme.spacing.md,
   },
   backButton: {
-    flex: 1,
-    height: 56,
+    width: '100%',
+    minHeight: 56,
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.xl,
     justifyContent: 'center',
@@ -1588,15 +1704,12 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
   },
   nextButton: {
-    flex: 1,
-    height: 56,
+    width: '100%',
+    minHeight: 56,
     backgroundColor: theme.colors.buttonPrimary,
     borderRadius: theme.borderRadius.xl,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  nextButtonFull: {
-    flex: 2,
   },
   nextButtonDisabled: {
     opacity: 0.6,
@@ -1747,6 +1860,45 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: theme.typography.sizes.sm,
     fontWeight: theme.typography.weights.medium as any,
+  },
+  guidedModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.spacing.xl,
+  },
+  guidedModalContent: {
+    width: '100%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xxl,
+    padding: theme.spacing.xl,
+    alignItems: 'center',
+    gap: theme.spacing.md,
+  },
+  guidedModalTitle: {
+    fontSize: theme.typography.sizes.xl,
+    fontWeight: theme.typography.weights.bold as any,
+    color: theme.colors.text,
+    textAlign: 'center',
+  },
+  guidedModalBody: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+  },
+  guidedModalButton: {
+    marginTop: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.xl,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.buttonPrimary,
+  },
+  guidedModalButtonText: {
+    color: theme.colors.buttonText,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
   },
 });
 

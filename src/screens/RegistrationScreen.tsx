@@ -4,6 +4,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   Animated,
   Dimensions,
@@ -17,7 +18,7 @@ import {
   Modal,
   ActivityIndicator,
 } from 'react-native';
-import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
 import * as ImagePicker from 'expo-image-picker';
 import AuthService from '../services/authService';
@@ -43,7 +44,7 @@ type StepData = {
   policyNumber: string;
   profilePicturePath: string;
   address: string;
-  notificationFrequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom_years' | '';
+  notificationFrequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom_years' | 'never' | '';
   customYears: string;
   customMonths: string;
   hasOwnAttorney: boolean | null;
@@ -121,7 +122,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     popiaAccepted: false,
   });
 
-  const totalSteps = 9; // Updated from 7 to 9 (added attorney/executor selection steps)
+  const totalSteps = 5;
   const [showMiWillAttorneyModal, setShowMiWillAttorneyModal] = useState(false);
   const [showMiWillExecutorModal, setShowMiWillExecutorModal] = useState(false);
   const [showAttorneyTermsModal, setShowAttorneyTermsModal] = useState(false);
@@ -132,6 +133,12 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
   const [showAttorneyInfoModal, setShowAttorneyInfoModal] = useState(false);
   const [showExecutorInfoModal, setShowExecutorInfoModal] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [showNeverModal, setShowNeverModal] = useState(false);
+  const [executorFlowView, setExecutorFlowView] = useState<'selection' | 'details' | null>(null);
+  const [secondaryContactSkipped, setSecondaryContactSkipped] = useState(false);
+  const [showExecutorCancelConfirm, setShowExecutorCancelConfirm] = useState(false);
+  const hasExecutorAssigned = formData.hasOwnExecutor || formData.miWillExecutorAccepted;
+
   const confettiAnims = useRef(
     Array.from({ length: 30 }, () => ({
       translateY: new Animated.Value(-50),
@@ -169,29 +176,10 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         );
       case 1: // Notification Frequency
         return !!formData.notificationFrequency;
-      case 2: // Attorney Selection (Yes/No)
-        return formData.hasOwnAttorney !== null;
-      case 3: // Attorney Information (only if hasOwnAttorney === true)
-        if (!formData.hasOwnAttorney) return true; // Skip validation if user chose "No"
-        return !!(
-          formData.attorneyFirstName.trim() &&
-          formData.attorneySurname.trim() &&
-          formData.attorneyEmail.trim() &&
-          formData.attorneyPhone.trim()
-        );
-      case 4: // Executor Selection (Yes/No)
-        return formData.hasOwnExecutor !== null;
-      case 5: // Executor Information
-        if (!formData.hasOwnExecutor) return true; // Skip validation if user chose "No"
-        return !!(
-          formData.executorFirstName.trim() &&
-          formData.executorSurname.trim() &&
-          formData.executorIdNumber.trim() &&
-          formData.executorRelationship.trim() &&
-          formData.executorEmail.trim() &&
-          formData.executorPhone.trim()
-        );
-      case 6: // Secondary Contact
+      case 2: // Secondary Contact
+        if (secondaryContactSkipped) {
+          return true;
+        }
         return !!(
           formData.secondaryContactFirstName.trim() &&
           formData.secondaryContactSurname.trim() &&
@@ -199,8 +187,8 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
           formData.secondaryContactEmail.trim() &&
           formData.secondaryContactPhone.trim()
         );
-      case 7: // Review
-      case 8: // Completion
+      case 3: // Review
+      case 4: // Completion
         return true;
       default:
         return false;
@@ -210,7 +198,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
   // Auto-generate policy number on mount
   useEffect(() => {
     const generatePolicyNumber = () => {
-      const prefix = 'POL-MW';
+      const prefix = 'REF-MW';
       const timestamp = Date.now().toString().slice(-8);
       const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
       return `${prefix}-${timestamp}-${random}`;
@@ -223,7 +211,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 
   // Trigger confetti animation when reaching step 8 (completion)
   useEffect(() => {
-    if (currentStep === 8) {
+    if (currentStep === totalSteps - 1) {
       setShowConfetti(true);
       // Animate each confetti piece
       confettiAnims.forEach((anim) => {
@@ -273,74 +261,278 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     }
   }, [currentStep]);
 
+  const phoneFields: (keyof StepData)[] = [
+    'phone',
+    'attorneyPhone',
+    'executorPhone',
+    'secondaryContactPhone',
+  ];
+
   const updateFormData = (field: keyof StepData, value: string | boolean | null) => {
     setFormData(prev => {
-      const updated = { ...prev, [field]: value };
-      
-      // Reset attorneySkipped if user starts filling in attorney fields
+      let processedValue = value;
+      if (typeof value === 'string' && phoneFields.includes(field)) {
+        processedValue = formatSAPhoneNumber(value);
+      }
+      const updated = { ...prev, [field]: processedValue };
+
       if (
-        currentStep === 3 &&
-        (field === 'attorneyFirstName' || 
-         field === 'attorneySurname' || 
-         field === 'attorneyEmail' || 
-         field === 'attorneyPhone') &&
-        value && 
-        typeof value === 'string' &&
-        value.trim()
+        secondaryContactSkipped &&
+        typeof processedValue === 'string' &&
+        ['secondaryContactFirstName', 'secondaryContactSurname', 'secondaryContactRelationship', 'secondaryContactEmail', 'secondaryContactPhone'].includes(field) &&
+        processedValue.trim()
       ) {
-        updated.attorneySkipped = false;
+        setSecondaryContactSkipped(false);
       }
       
+      // Reset attorneySkipped if user starts filling in attorney fields
       return updated;
     });
   };
 
-  const handleAttorneySelection = (hasOwn: boolean) => {
-    setFormData(prev => ({
-      ...prev,
-      hasOwnAttorney: hasOwn,
-      miWillAttorneyAccepted: hasOwn ? false : true,
-    }));
-
-    if (hasOwn) {
-      setTimeout(() => nextStep(), 0);
-    } else {
-      setShowMiWillAttorneyModal(true);
-    }
+  const handleSkipSecondaryContact = () => {
+    setSecondaryContactSkipped(true);
+    updateFormData('secondaryContactFirstName', '');
+    updateFormData('secondaryContactSurname', '');
+    updateFormData('secondaryContactRelationship', '');
+    updateFormData('secondaryContactEmail', '');
+    updateFormData('secondaryContactPhone', '');
+    nextStep();
   };
 
-  const handleExecutorSelection = (hasOwn: boolean) => {
-    setFormData(prev => ({
-      ...prev,
-      hasOwnExecutor: hasOwn,
-      miWillExecutorAccepted: hasOwn ? false : true,
-    }));
+  const handleAddSecondaryContactFromReview = () => {
+    setSecondaryContactSkipped(false);
+    setCurrentStep(2);
+  };
 
+  const openExecutorManager = (view: 'selection' | 'details') => {
+    setExecutorFlowView(view);
+  };
+
+
+  const handleExecutorFlowSelection = (hasOwn: boolean) => {
     if (hasOwn) {
-      setTimeout(() => nextStep(), 0);
+      setFormData(prev => ({
+        ...prev,
+        hasOwnExecutor: true,
+        miWillExecutorAccepted: false,
+      }));
+      setExecutorFlowView('details');
     } else {
+      setFormData(prev => ({
+        ...prev,
+        hasOwnExecutor: false,
+        miWillExecutorAccepted: false,
+        executorFirstName: '',
+        executorSurname: '',
+        executorEmail: '',
+        executorPhone: '',
+        executorIdNumber: '',
+        executorRelationship: '',
+        executorAddress: '',
+      }));
       setShowMiWillExecutorModal(true);
     }
   };
 
-  const handleExecutorSameAsAttorney = () => {
-    if (!formData.hasOwnAttorney || formData.attorneySkipped) {
-      return;
+  const isExecutorDetailsValid = (): boolean => {
+    return !!(
+      formData.executorFirstName.trim() &&
+      formData.executorSurname.trim() &&
+      formData.executorIdNumber.trim() &&
+      formData.executorRelationship.trim() &&
+      formData.executorEmail.trim() &&
+      formData.executorPhone.trim()
+    );
+  };
+
+  const handleSaveExecutorDetails = () => {
+    if (!isExecutorDetailsValid()) return;
+    setFormData(prev => ({
+      ...prev,
+      hasOwnExecutor: true,
+    }));
+    setExecutorFlowView(null);
+  };
+
+  const handleCancelExecutorDetails = () => {
+    setExecutorFlowView('selection');
+  };
+  const handleCancelExecutorFlow = () => {
+    if (hasExecutorAssigned) {
+      setShowExecutorCancelConfirm(true);
+    } else {
+      setExecutorFlowView(null);
     }
+  };
 
-    const firstName = (formData.attorneyFirstName || '').trim();
-    const surname = (formData.attorneySurname || '').trim();
-    const email = (formData.attorneyEmail || '').trim();
-    const phoneRaw = formData.attorneyPhone || '';
-    const phoneFormatted = phoneRaw ? formatSAPhoneNumber(phoneRaw) : '';
-    const address = (formData.attorneyAddress || '').trim();
+  const confirmCancelExecutorFlow = () => {
+    setFormData(prev => ({
+      ...prev,
+      hasOwnExecutor: false,
+      miWillExecutorAccepted: false,
+      executorFirstName: '',
+      executorSurname: '',
+      executorEmail: '',
+      executorPhone: '',
+      executorIdNumber: '',
+      executorRelationship: '',
+      executorAddress: '',
+    }));
+    setExecutorFlowView(null);
+    setShowExecutorCancelConfirm(false);
+  };
 
-    updateFormData('executorSameAsAttorney', true);
-    updateFormData('executorFirstName', firstName);
-    updateFormData('executorSurname', surname);
-    updateFormData('executorEmail', email);
-    updateFormData('executorPhone', phoneFormatted);
-    updateFormData('executorAddress', address);
+  const dismissCancelExecutorFlow = () => {
+    setShowExecutorCancelConfirm(false);
+  };
+
+  const renderExecutorFlowPage = () => {
+    if (!executorFlowView) return null;
+    const isSelection = executorFlowView === 'selection';
+
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView
+            contentContainerStyle={styles.executorPageScroll}
+            showsVerticalScrollIndicator={false}
+          >
+            {isSelection ? (
+              <View style={styles.executorSelectionPage}>
+                <Text style={styles.executorPageTitle}>Executor Selection</Text>
+                <View style={styles.executorIconContainer}>
+                  <FontAwesome5 name="file-signature" size={72} color={theme.colors.primary} />
+                </View>
+                <TouchableOpacity
+                  style={styles.executorInfoPill}
+                  onPress={() => setShowExecutorInfoModal(true)}
+                >
+                  <Ionicons name="information-circle-outline" size={20} color={theme.colors.primary} />
+                  <Text style={styles.executorInfoPillText}>Why do I need an executor?</Text>
+                </TouchableOpacity>
+                <Text style={styles.executorModalDescription}>
+                  Do you have your own executor?
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.executorChoiceButton,
+                    styles.executorChoiceButtonOutline,
+                  ]}
+                  onPress={() => handleExecutorFlowSelection(true)}
+                >
+                  <Text style={styles.executorChoiceButtonOutlineText}>Yes, I have my own executor</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.executorChoiceButton,
+                    styles.executorChoiceButtonFilled,
+                  ]}
+                  onPress={() => handleExecutorFlowSelection(false)}
+                >
+                  <Text style={styles.executorChoiceButtonFilledText}>No, I need an executor</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleCancelExecutorFlow}>
+                  <Text style={styles.executorCancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.executorDetailsPage}>
+                <TouchableOpacity
+                  style={styles.executorBackButton}
+                  onPress={handleCancelExecutorDetails}
+                >
+                  <Ionicons name="chevron-back" size={20} color={theme.colors.primary} />
+                  <Text style={styles.executorBackButtonText}>Back</Text>
+                </TouchableOpacity>
+                <Text style={styles.executorPageTitle}>Add Executor</Text>
+                <Text style={styles.executorModalDescription}>
+                  Tell us about the person or professional who will carry out your wishes.
+                </Text>
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="First Name"
+                  placeholderTextColor={theme.colors.placeholder}
+                  value={formData.executorFirstName}
+                  onChangeText={(value) => updateFormData('executorFirstName', value)}
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Surname"
+                  placeholderTextColor={theme.colors.placeholder}
+                  value={formData.executorSurname}
+                  onChangeText={(value) => updateFormData('executorSurname', value)}
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="ID Number"
+                  placeholderTextColor={theme.colors.placeholder}
+                  value={formData.executorIdNumber}
+                  onChangeText={(value) => updateFormData('executorIdNumber', value)}
+                  keyboardType="numeric"
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Relationship (e.g., Brother, Friend)"
+                  placeholderTextColor={theme.colors.placeholder}
+                  value={formData.executorRelationship}
+                  onChangeText={(value) => updateFormData('executorRelationship', value)}
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email"
+                  placeholderTextColor={theme.colors.placeholder}
+                  value={formData.executorEmail}
+                  onChangeText={(value) => updateFormData('executorEmail', value)}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Phone Number"
+                  placeholderTextColor={theme.colors.placeholder}
+                  value={formData.executorPhone}
+                  onChangeText={(value) => updateFormData('executorPhone', value)}
+                  keyboardType="phone-pad"
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Address (Optional)"
+                  placeholderTextColor={theme.colors.placeholder}
+                  value={formData.executorAddress}
+                  onChangeText={(value) => updateFormData('executorAddress', value)}
+                  multiline
+                />
+
+                <TouchableOpacity
+                  style={[
+                    styles.executorModalPrimaryButton,
+                    !isExecutorDetailsValid() && styles.executorModalPrimaryButtonDisabled,
+                  ]}
+                  onPress={handleSaveExecutorDetails}
+                  disabled={!isExecutorDetailsValid()}
+                >
+                  <Text style={styles.executorModalPrimaryButtonText}>Save Executor</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleCancelExecutorFlow}>
+                  <Text style={styles.executorCancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
   };
 
   const pickProfileImage = async () => {
@@ -410,38 +602,8 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         setFieldError(null);
       }
 
-      // Handle attorney selection step
-      if (currentStep === 2) {
-        if (formData.hasOwnAttorney === false && !formData.miWillAttorneyAccepted) {
-          // Show MiWill attorney modal
-          setShowMiWillAttorneyModal(true);
-          return;
-        }
-      }
+      const nextStepNumber = currentStep + 1;
 
-      // Handle executor selection step
-      if (currentStep === 4) {
-        if (formData.hasOwnExecutor === false && !formData.miWillExecutorAccepted) {
-          // Show MiWill executor modal
-          setShowMiWillExecutorModal(true);
-          return;
-        }
-      }
-
-      // Calculate next step (skip attorney info if user chose MiWill attorney)
-      let nextStepNumber = currentStep + 1;
-      
-      // Skip attorney info step (3) if user chose MiWill attorney
-      if (currentStep === 2 && formData.hasOwnAttorney === false) {
-        nextStepNumber = 4; // Skip to executor selection
-      }
-      
-      // Skip executor info step (5) if user chose MiWill executor
-      if (currentStep === 4 && formData.hasOwnExecutor === false) {
-        nextStepNumber = 6; // Skip to secondary contact
-      }
-
-      // Animate out
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 0,
@@ -456,7 +618,6 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
       ]).start(() => {
         setCurrentStep(nextStepNumber);
         slideAnim.setValue(width);
-        // Animate in
         Animated.parallel([
           Animated.timing(fadeAnim, {
             toValue: 1,
@@ -470,11 +631,8 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
           }),
         ]).start();
       });
-    } else {
-      if (!isCompleting) {
-        // Complete registration
-        handleCompleteRegistration();
-      }
+    } else if (!isCompleting) {
+      handleCompleteRegistration();
     }
   };
 
@@ -482,8 +640,15 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     if (isCompleting) return;
     try {
       setIsCompleting(true);
+      const normalizedEmail = formData.email.trim().toLowerCase();
+
+      if (!isValidEmail(normalizedEmail)) {
+        Alert.alert('Invalid Email', 'Please enter a valid email address before completing registration.');
+        setIsCompleting(false);
+        return;
+      }
       // 1) Create auth account
-      const cred = await AuthService.register(formData.email.trim(), formData.password);
+      const cred = await AuthService.register(normalizedEmail, formData.password);
       const uid = cred.user.uid;
 
       // 2) Map notification frequency
@@ -495,11 +660,14 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         const months = parseInt(formData.customMonths || '0', 10);
         custom_days = years * 365 + months * 30;
       }
+      if (formData.notificationFrequency === 'never') {
+        notification_frequency = 'yearly';
+      }
 
       // 3) Create user document with formatted phone
       const formattedPhone = formatSAPhoneNumber(formData.phone.trim());
       await UserService.createUser(uid, {
-        email: formData.email.trim(),
+        email: normalizedEmail,
         phone: formattedPhone,
         first_name: formData.firstName.trim(),
         surname: formData.surname.trim(),
@@ -589,8 +757,10 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         }
       }
 
-      // 6) Navigate to dashboard
-      navigation.navigate('Dashboard');
+      // 6) Navigate to Upload Will flow for first-time guided setup
+      navigation.navigate('UploadWill', {
+        firstTimeGuidedFlow: true,
+      });
     } catch (e: any) {
       console.error('Registration error:', e);
       
@@ -631,19 +801,8 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 
   const previousStep = () => {
     if (currentStep > 0) {
-      let targetStep = currentStep - 1;
+      const targetStep = currentStep - 1;
 
-      // Skip attorney info step if user chose MiWill attorney
-      if (currentStep === 4 && formData.hasOwnAttorney === false) {
-        targetStep = 2; // Go back to attorney selection
-      }
-
-      // Skip executor info step if user chose MiWill executor
-      if (currentStep === 6 && formData.hasOwnExecutor === false) {
-        targetStep = 4; // Go back to executor selection
-      }
-
-      // Animate out
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 0,
@@ -658,7 +817,6 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
       ]).start(() => {
         setCurrentStep(targetStep);
         slideAnim.setValue(-width);
-        // Animate in
         Animated.parallel([
           Animated.timing(fadeAnim, {
             toValue: 1,
@@ -711,20 +869,20 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
       const years = index + 1;
       const isActive = formData.customYears === years.toString();
       return (
-        <TouchableOpacity
+          <TouchableOpacity
           key={`custom-year-${years}`}
-          style={[
-            styles.customYearOption,
+            style={[
+              styles.customYearOption,
             isActive && styles.customYearOptionActive,
-          ]}
-          onPress={() => {
-            updateFormData('customYears', years.toString());
+            ]}
+            onPress={() => {
+              updateFormData('customYears', years.toString());
             updateFormData('customMonths', '0');
-          }}
-        >
+            }}
+          >
           <Text style={styles.customYearText}>{`${years} year${years > 1 ? 's' : ''}`}</Text>
-        </TouchableOpacity>
-      );
+          </TouchableOpacity>
+        );
     });
   };
 
@@ -768,7 +926,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             </View>
 
             <View style={styles.policyNumberDisplay}>
-              <Text style={styles.policyNumberLabel}>Your Policy Number:</Text>
+              <Text style={styles.policyNumberLabel}>Your Reference Number:</Text>
               <Text style={styles.policyNumberValue}>{formData.policyNumber}</Text>
             </View>
 
@@ -825,19 +983,19 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             />
 
             <View style={styles.passwordInputWrapper}>
-              <TextInput
+            <TextInput
                 style={styles.passwordInput}
-                placeholder="Password"
-                placeholderTextColor={theme.colors.placeholder}
-                value={formData.password}
-                onChangeText={(value) => updateFormData('password', value)}
+              placeholder="Password"
+              placeholderTextColor={theme.colors.placeholder}
+              value={formData.password}
+              onChangeText={(value) => updateFormData('password', value)}
                 secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="off"
-                textContentType="none"
-                importantForAutofill="no"
-              />
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="off"
+              textContentType="none"
+              importantForAutofill="no"
+            />
               <TouchableOpacity
                 style={styles.eyeIcon}
                 onPress={() => setShowPassword(!showPassword)}
@@ -851,19 +1009,19 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
             </View>
 
             <View style={styles.passwordInputWrapper}>
-              <TextInput
+            <TextInput
                 style={styles.passwordInput}
-                placeholder="Confirm Password"
-                placeholderTextColor={theme.colors.placeholder}
-                value={formData.confirmPassword}
-                onChangeText={(value) => updateFormData('confirmPassword', value)}
+              placeholder="Confirm Password"
+              placeholderTextColor={theme.colors.placeholder}
+              value={formData.confirmPassword}
+              onChangeText={(value) => updateFormData('confirmPassword', value)}
                 secureTextEntry={!showConfirmPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="off"
-                textContentType="none"
-                importantForAutofill="no"
-              />
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="off"
+              textContentType="none"
+              importantForAutofill="no"
+            />
               <TouchableOpacity
                 style={styles.eyeIcon}
                 onPress={() => setShowConfirmPassword(!showConfirmPassword)}
@@ -1001,11 +1159,25 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 {renderCustomYearsOptions()}
               </ScrollView>
             )}
+
+            <TouchableOpacity
+              style={[
+                styles.frequencyOption,
+                formData.notificationFrequency === 'never' && styles.frequencyOptionActive,
+              ]}
+              onPress={() => {
+                updateFormData('notificationFrequency', 'never');
+                setShowNeverModal(true);
+              }}
+            >
+              <Ionicons name="moon-outline" size={32} color={theme.colors.primary} />
+              <Text style={styles.frequencyText}>Never</Text>
+              <Text style={styles.frequencySubtext}>We’ll remind you gently if needed</Text>
+            </TouchableOpacity>
           </Animated.View>
         );
 
       case 2:
-        // Attorney Selection Step
         return (
           <Animated.View style={[styles.stepContainer, animatedStyle]}>
             <View style={styles.stepTopBar}>
@@ -1015,279 +1187,11 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               >
                 <Text style={styles.topBackButtonText}>Back</Text>
               </TouchableOpacity>
-            </View>
-            <Text style={styles.stepTitle}>Attorney Selection</Text>
-            <View style={styles.iconContainer}>
-              <MaterialIcons name="gavel" size={60} color={theme.colors.primary} />
-              <TouchableOpacity
-                style={styles.infoIconButton}
-                onPress={() => setShowAttorneyInfoModal(true)}
-              >
-                <Ionicons name="information-circle-outline" size={28} color={theme.colors.primary} />
-                <Text style={styles.infoIconText}>What does an attorney do?</Text>
+              <TouchableOpacity onPress={handleSkipSecondaryContact}>
+                <Text style={styles.skipButtonText}>Skip</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.stepSubtitle}>Do you have your own attorney?</Text>
-
-            <TouchableOpacity
-              style={[
-                styles.selectionButton,
-                formData.hasOwnAttorney === true && styles.selectionButtonOutlineActive,
-              ]}
-              onPress={() => handleAttorneySelection(true)}
-            >
-              <Text style={[
-                styles.selectionButtonText,
-                formData.hasOwnAttorney === true && styles.selectionButtonTextActive
-              ]}>
-                Yes, I have my own attorney
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.selectionButton,
-                styles.selectionButtonFilled,
-                formData.hasOwnAttorney === false && styles.selectionButtonFilledActive,
-              ]}
-              onPress={() => handleAttorneySelection(false)}
-            >
-              <Text style={styles.selectionButtonTextFilled}>
-                No, I need an attorney
-              </Text>
-            </TouchableOpacity>
-          </Animated.View>
-        );
-
-      case 3:
-        // Attorney Information (only shown if hasOwnAttorney === true)
-        return (
-          <Animated.View style={[styles.stepContainer, animatedStyle]}>
-            <View style={styles.stepTopBar}>
-              <TouchableOpacity
-                style={styles.topBackButton}
-                onPress={previousStep}
-              >
-                <Text style={styles.topBackButtonText}>Back</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.stepTitle}>Attorney Information</Text>
-            <View style={styles.iconContainer}>
-              <MaterialIcons name="gavel" size={60} color={theme.colors.primary} />
-            </View>
-            <Text style={styles.stepSubtitle}>Tell us about your attorney</Text>
-
-            <TextInput
-              style={styles.input}
-              placeholder="First Name"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.attorneyFirstName}
-              onChangeText={(value) => updateFormData('attorneyFirstName', value)}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Surname"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.attorneySurname}
-              onChangeText={(value) => updateFormData('attorneySurname', value)}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Attorney Email"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.attorneyEmail}
-              onChangeText={(value) => updateFormData('attorneyEmail', value)}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Attorney Phone Number"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.attorneyPhone}
-              onChangeText={(value) => updateFormData('attorneyPhone', value)}
-              keyboardType="phone-pad"
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Law Firm (Optional)"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.attorneyFirm}
-              onChangeText={(value) => updateFormData('attorneyFirm', value)}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Attorney Address (Optional)"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.attorneyAddress}
-              onChangeText={(value) => updateFormData('attorneyAddress', value)}
-              multiline
-            />
-          </Animated.View>
-        );
-
-      case 4:
-        // Executor Selection Step
-        return (
-          <Animated.View style={[styles.stepContainer, animatedStyle]}>
-            <View style={styles.stepTopBar}>
-              <TouchableOpacity
-                style={styles.topBackButton}
-                onPress={previousStep}
-              >
-                <Text style={styles.topBackButtonText}>Back</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.stepTitle}>Executor Selection</Text>
-            <View style={styles.iconContainer}>
-              <FontAwesome5 name="file-signature" size={50} color={theme.colors.primary} />
-              <TouchableOpacity
-                style={styles.infoIconButton}
-                onPress={() => setShowExecutorInfoModal(true)}
-              >
-                <Ionicons name="information-circle-outline" size={28} color={theme.colors.primary} />
-                <Text style={styles.infoIconText}>Why do I need an executor?</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.stepSubtitle}>Do you have your own executor?</Text>
-
-            <TouchableOpacity
-              style={[
-                styles.selectionButton,
-                formData.hasOwnExecutor === true && styles.selectionButtonOutlineActive,
-              ]}
-              onPress={() => handleExecutorSelection(true)}
-            >
-              <Text style={[
-                styles.selectionButtonText,
-                formData.hasOwnExecutor === true && styles.selectionButtonTextActive
-              ]}>
-                Yes, I have my own executor
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.selectionButton,
-                styles.selectionButtonFilled,
-                formData.hasOwnExecutor === false && styles.selectionButtonFilledActive,
-              ]}
-              onPress={() => handleExecutorSelection(false)}
-            >
-              <Text style={styles.selectionButtonTextFilled}>
-                No, I need an executor
-              </Text>
-            </TouchableOpacity>
-          </Animated.View>
-        );
-
-      case 5:
-        // Executor Information (only shown if hasOwnExecutor === true)
-        return (
-          <Animated.View style={[styles.stepContainer, animatedStyle]}>
-            <View style={styles.stepTopBar}>
-              <TouchableOpacity
-                style={styles.topBackButton}
-                onPress={previousStep}
-              >
-                <Text style={styles.topBackButtonText}>Back</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.stepTitle}>Executor Information</Text>
-            <View style={styles.iconContainer}>
-              <FontAwesome5 name="file-signature" size={50} color={theme.colors.primary} />
-            </View>
-            <Text style={styles.stepSubtitle}>Tell us about your executor</Text>
-
-            {formData.hasOwnAttorney && (
-              <TouchableOpacity
-                style={styles.sameAsButton}
-                onPress={handleExecutorSameAsAttorney}
-              >
-                <Text style={styles.sameAsButtonText}>Same Information as Attorney</Text>
-              </TouchableOpacity>
-            )}
-
-            <TextInput
-              style={styles.input}
-              placeholder="First Name"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.executorFirstName}
-              onChangeText={(value) => updateFormData('executorFirstName', value)}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Surname"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.executorSurname}
-              onChangeText={(value) => updateFormData('executorSurname', value)}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="ID Number"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.executorIdNumber}
-              onChangeText={(value) => updateFormData('executorIdNumber', value)}
-              keyboardType="numeric"
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Relationship (e.g., Brother, Friend)"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.executorRelationship}
-              onChangeText={(value) => updateFormData('executorRelationship', value)}
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.executorEmail}
-              onChangeText={(value) => updateFormData('executorEmail', value)}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Phone Number"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.executorPhone}
-              onChangeText={(value) => updateFormData('executorPhone', value)}
-              keyboardType="phone-pad"
-            />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Address (Optional)"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.executorAddress}
-              onChangeText={(value) => updateFormData('executorAddress', value)}
-              multiline
-            />
-          </Animated.View>
-        );
-
-      case 6:
-        return (
-          <Animated.View style={[styles.stepContainer, animatedStyle]}>
-            <View style={styles.stepTopBar}>
-              <TouchableOpacity
-                style={styles.topBackButton}
-                onPress={previousStep}
-              >
-                <Text style={styles.topBackButtonText}>Back</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.stepTitle}>Secondary Contact</Text>
+            <Text style={styles.stepTitle}>Emergency contact</Text>
             <View style={styles.iconContainer}>
               <Ionicons name="people-outline" size={60} color={theme.colors.primary} />
             </View>
@@ -1340,7 +1244,8 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
           </Animated.View>
         );
 
-      case 7:
+
+      case 3:
         return (
           <Animated.View style={[styles.stepContainer, animatedStyle]}>
             <View style={styles.stepTopBar}>
@@ -1381,95 +1286,119 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               <View style={styles.reviewSection}>
                 <Text style={styles.reviewSectionTitle}>Notification Settings</Text>
                 <Text style={styles.reviewItem}>
-                  Frequency: {formData.notificationFrequency === 'custom_years' 
-                    ? `Every ${formData.customYears} year${parseInt(formData.customYears) > 1 ? 's' : ''}`
-                    : formData.notificationFrequency.charAt(0).toUpperCase() + formData.notificationFrequency.slice(1)}
+                  Frequency:{' '}
+                  {formData.notificationFrequency === 'custom_years'
+                    ? `Every ${formData.customYears} year${parseInt(formData.customYears, 10) > 1 ? 's' : ''}`
+                    : formData.notificationFrequency === 'never'
+                    ? 'Never (MiWill will check once a year)'
+                    : formData.notificationFrequency
+                    ? formData.notificationFrequency.charAt(0).toUpperCase() + formData.notificationFrequency.slice(1)
+                    : 'Not selected'}
                 </Text>
               </View>
 
-              {formData.hasOwnAttorney ? (
-                <View style={styles.reviewSection}>
-                  <Text style={styles.reviewSectionTitle}>Attorney Information</Text>
-                  <Text style={styles.reviewItem}>
-                    Name: {`${formData.attorneyFirstName} ${formData.attorneySurname}`.trim()}
-                  </Text>
-                  {formData.attorneyEmail ? (
-                    <Text style={styles.reviewItem}>Email: {formData.attorneyEmail}</Text>
-                  ) : null}
-                  {formData.attorneyPhone ? (
-                    <Text style={styles.reviewItem}>Phone: {formData.attorneyPhone}</Text>
-                  ) : null}
-                  {formData.attorneyFirm ? (
-                    <Text style={styles.reviewItem}>Law Firm: {formData.attorneyFirm}</Text>
-                  ) : null}
-                  {formData.attorneyAddress ? (
-                    <Text style={styles.reviewItem}>Address: {formData.attorneyAddress}</Text>
-                  ) : null}
-                </View>
-              ) : (
-                <View style={styles.reviewSection}>
-                  <Text style={styles.reviewSectionTitle}>Attorney Information</Text>
-                  <Text style={styles.reviewItem}>
-                    <Ionicons name="shield-checkmark" size={16} color={theme.colors.primary} /> MiWill Partner
-                  </Text>
+              <View style={styles.reviewSection}>
+                <Text style={styles.reviewSectionTitle}>Executor</Text>
+                {formData.hasOwnExecutor ? (
+                  <>
+                    <Text style={styles.reviewItem}>
+                      Name: {`${formData.executorFirstName} ${formData.executorSurname}`.trim()}
+                    </Text>
+                    {formData.executorRelationship ? (
+                      <Text style={styles.reviewItem}>Relationship: {formData.executorRelationship}</Text>
+                    ) : null}
+                    {formData.executorEmail ? (
+                      <Text style={styles.reviewItem}>Email: {formData.executorEmail}</Text>
+                    ) : null}
+                    {formData.executorPhone ? (
+                      <Text style={styles.reviewItem}>Phone: {formData.executorPhone}</Text>
+                    ) : null}
+                  </>
+                ) : formData.miWillExecutorAccepted ? (
                   <Text style={styles.reviewItemNote}>
-                    You can appoint your own attorney anytime from the Dashboard
+                    Managed by MiWill Executors. You can appoint your own anytime.
                   </Text>
-                </View>
-              )}
-
-              {formData.hasOwnExecutor ? (
-                <View style={styles.reviewSection}>
-                  <Text style={styles.reviewSectionTitle}>Executor Information</Text>
-                  <Text style={styles.reviewItem}>
-                    Name: {`${formData.executorFirstName} ${formData.executorSurname}`.trim()}
-                  </Text>
-                  <Text style={styles.reviewItem}>Relationship: {formData.executorRelationship}</Text>
-                  {formData.executorEmail ? (
-                    <Text style={styles.reviewItem}>Email: {formData.executorEmail}</Text>
-                  ) : null}
-                  {formData.executorPhone ? (
-                    <Text style={styles.reviewItem}>Phone: {formData.executorPhone}</Text>
-                  ) : null}
-                  {formData.executorIdNumber ? (
-                    <Text style={styles.reviewItem}>ID Number: {formData.executorIdNumber}</Text>
-                  ) : null}
-                  {formData.executorAddress ? (
-                    <Text style={styles.reviewItem}>Address: {formData.executorAddress}</Text>
-                  ) : null}
-                </View>
-              ) : (
-                <View style={styles.reviewSection}>
-                  <Text style={styles.reviewSectionTitle}>Executor Information</Text>
-                  <Text style={styles.reviewItem}>
-                    <Ionicons name="shield-checkmark" size={16} color={theme.colors.primary} /> MiWill Partner
-                  </Text>
+                ) : (
                   <Text style={styles.reviewItemNote}>
-                    You can appoint your own executor anytime from the Dashboard
+                    No executor yet. Tap below to appoint one anytime.
                   </Text>
-                </View>
-              )}
+                )}
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.reviewActionButtonOutline,
+                    pressed && styles.reviewActionButtonOutlineActive,
+                  ]}
+                  onPress={() =>
+                    openExecutorManager(hasExecutorAssigned ? 'selection' : 'selection')
+                  }
+                >
+                  {({ pressed }) => (
+                    <Text
+                      style={[
+                        styles.reviewActionButtonOutlineText,
+                        pressed && styles.reviewActionButtonOutlineTextActive,
+                      ]}
+                    >
+                      {hasExecutorAssigned ? 'Update Executor' : 'Add Executor'}
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
 
               <View style={styles.reviewSection}>
-                <Text style={styles.reviewSectionTitle}>Secondary Contact</Text>
-                <Text style={styles.reviewItem}>
-                  Name: {`${formData.secondaryContactFirstName} ${formData.secondaryContactSurname}`.trim()}
-                </Text>
+                <Text style={styles.reviewSectionTitle}>Emergency Contact</Text>
+                {secondaryContactSkipped ? (
+                  <>
+                    <Text style={styles.reviewItemNote}>Emergency Contact skipped for now.</Text>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.reviewActionButtonOutline,
+                        pressed && styles.reviewActionButtonOutlineActive,
+                      ]}
+                      onPress={handleAddSecondaryContactFromReview}
+                    >
+                      {({ pressed }) => (
+                        <Text
+                          style={[
+                            styles.reviewActionButtonOutlineText,
+                            pressed && styles.reviewActionButtonOutlineTextActive,
+                          ]}
+                        >
+                          Add Emergency Contact
+                        </Text>
+                      )}
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.reviewItem}>
+                      Name: {`${formData.secondaryContactFirstName} ${formData.secondaryContactSurname}`.trim()}
+                    </Text>
                 <Text style={styles.reviewItem}>Relationship: {formData.secondaryContactRelationship}</Text>
-                {formData.secondaryContactEmail ? (
-                  <Text style={styles.reviewItem}>Email: {formData.secondaryContactEmail}</Text>
-                ) : null}
-                {formData.secondaryContactPhone ? (
-                  <Text style={styles.reviewItem}>Phone: {formData.secondaryContactPhone}</Text>
-                ) : null}
+                    {formData.secondaryContactEmail ? (
+                      <Text style={styles.reviewItem}>Email: {formData.secondaryContactEmail}</Text>
+                    ) : null}
+                    {formData.secondaryContactPhone ? (
+                      <Text style={styles.reviewItem}>Phone: {formData.secondaryContactPhone}</Text>
+                    ) : null}
+                  </>
+                )}
               </View>
             </ScrollView>
           </Animated.View>
         );
 
-      case 8:
+      case 4:
         return (
           <Animated.View style={[styles.stepContainer, animatedStyle]}>
+              <View style={styles.stepTopBar}>
+              <TouchableOpacity
+                style={styles.topBackButton}
+                onPress={previousStep}
+              >
+                <Text style={styles.topBackButtonText}>Back</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.completionContainer}>
               <Image
                 source={require('../../assets/logo1.png')}
@@ -1493,7 +1422,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     }
   };
 
-  return (
+  const mainLayout = (
     <SafeAreaView style={styles.safeArea}>
       {showConfetti && (
         <View style={styles.confettiContainer} pointerEvents="none">
@@ -1505,20 +1434,20 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 {
                   left: `${(index % 10) * 10 + 5}%`,
                   backgroundColor: [
+                    '#D32F2F', // red
                     theme.colors.primary,
-                    theme.colors.success,
-                    theme.colors.info,
-                    '#FFD700',
-                    '#FF6B9D',
-                    '#C9A3FF',
-                  ][index % 6],
+                    '#FFFFFF',
+                    '#B0B0B0',
+                  ][index % 4],
                   transform: [
                     { translateY: anim.translateY },
                     { translateX: anim.translateX },
-                    { rotate: anim.rotate.interpolate({
-                      inputRange: [0, 360],
-                      outputRange: ['0deg', '360deg'],
-                    }) },
+                    {
+                      rotate: anim.rotate.interpolate({
+                        inputRange: [0, 360],
+                        outputRange: ['0deg', '360deg'],
+                      }),
+                    },
                   ],
                   opacity: anim.opacity,
                 },
@@ -1538,47 +1467,49 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
           {renderProgressBar()}
           {renderStep()}
 
-          {currentStep !== 2 && currentStep !== 4 && (
-            <View style={styles.buttonContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.nextButton,
-                  styles.nextButtonFull,
-                  (!isStepValid() || (currentStep === totalSteps - 1 && isCompleting)) && styles.nextButtonDisabled
-                ]}
-                onPress={nextStep}
-                disabled={!isStepValid() || (currentStep === totalSteps - 1 && isCompleting)}
-              >
-                {currentStep === totalSteps - 1 && isCompleting ? (
-                  <View style={styles.nextButtonLoading}>
-                    <ActivityIndicator size="small" color={theme.colors.buttonText} />
-                    <Text style={styles.nextButtonLoadingText}>Completing...</Text>
-                  </View>
-                ) : (
-                  <Text style={[
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity
+              style={[
+                styles.nextButton,
+                styles.nextButtonFull,
+                (!isStepValid() || (currentStep === totalSteps - 1 && isCompleting)) &&
+                  styles.nextButtonDisabled,
+              ]}
+              onPress={nextStep}
+              disabled={!isStepValid() || (currentStep === totalSteps - 1 && isCompleting)}
+            >
+              {currentStep === totalSteps - 1 && isCompleting ? (
+                <View style={styles.nextButtonLoading}>
+                  <ActivityIndicator size="small" color={theme.colors.buttonText} />
+                  <Text style={styles.nextButtonLoadingText}>Completing...</Text>
+                </View>
+              ) : (
+                <Text
+                  style={[
                     styles.nextButtonText,
-                    !isStepValid() && styles.nextButtonTextDisabled
-                  ]}>
-                    {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
+                    !isStepValid() && styles.nextButtonTextDisabled,
+                  ]}
+                >
+                  {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
 
-          {currentStep >= 1 && currentStep <= 7 && (
+          {currentStep >= 1 && currentStep <= 3 && (
             <View style={styles.cancelButtonContainer}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={handleCancelRegistration}
-              >
+              <TouchableOpacity style={styles.cancelButton} onPress={handleCancelRegistration}>
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
             </View>
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
 
+  const modalLayout = (
+    <>
       {/* MiWill Attorney Confirmation Modal */}
       <Modal
         visible={showMiWillAttorneyModal}
@@ -1687,9 +1618,15 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               ]}
               onPress={() => {
                 if (formData.miWillExecutorAccepted) {
+                  setFormData(prev => ({
+                    ...prev,
+                    hasOwnExecutor: false,
+                    miWillExecutorAccepted: true,
+                  }));
                   setReturnToExecutorConsent(false);
                   setShowMiWillExecutorModal(false);
-                  nextStep();
+                  setExecutorFlowView(null);
+                  setCurrentStep(3);
                 }
               }}
               disabled={!formData.miWillExecutorAccepted}
@@ -1881,6 +1818,29 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         </View>
       </Modal>
 
+      {/* Never Frequency Modal */}
+      <Modal
+        visible={showNeverModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowNeverModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Gentle Reminder</Text>
+            <Text style={styles.modalBody}>
+              Life happens, we will check on you once a year.
+            </Text>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowNeverModal(false)}
+            >
+              <Text style={styles.modalCloseText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Terms of Use Modal */}
       <Modal
         visible={showTermsModal}
@@ -1928,7 +1888,50 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </>
+  );
+
+  if (executorFlowView) {
+    return (
+      <>
+        {renderExecutorFlowPage()}
+        {modalLayout}
+        <Modal
+          visible={showExecutorCancelConfirm}
+          transparent
+          animationType="fade"
+          onRequestClose={dismissCancelExecutorFlow}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Remove Executor?</Text>
+              <Text style={styles.modalBody}>
+                This will clear your current executor selection. Are you sure you want to continue?
+              </Text>
+              <TouchableOpacity
+                style={styles.modalContinueButton}
+                onPress={confirmCancelExecutorFlow}
+              >
+                <Text style={styles.modalContinueText}>Yes, remove executor</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalBackButton}
+                onPress={dismissCancelExecutorFlow}
+              >
+                <Text style={styles.modalBackText}>Keep current executor</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {mainLayout}
+      {modalLayout}
+    </>
   );
 };
 
@@ -1973,7 +1976,8 @@ const styles = StyleSheet.create({
   },
   stepTopBar: {
     flexDirection: 'row',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: theme.spacing.sm,
   },
   topBackButton: {
@@ -1981,6 +1985,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   topBackButtonText: {
+    color: theme.colors.primary,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.medium as any,
+  },
+  skipButtonText: {
     color: theme.colors.primary,
     fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.medium as any,
@@ -2220,6 +2229,28 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.xs / 2,
     marginBottom: theme.spacing.xs,
   },
+  reviewActionButtonOutline: {
+    marginTop: theme.spacing.xs,
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.full,
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
+  reviewActionButtonOutlineActive: {
+    backgroundColor: theme.colors.primary + '10',
+  },
+  reviewActionButtonOutlineText: {
+    color: theme.colors.primary,
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  reviewActionButtonOutlineTextActive: {
+    color: theme.colors.primaryDark || theme.colors.primary,
+  },
   reviewProfileImage: {
     alignItems: 'center',
     marginBottom: theme.spacing.md,
@@ -2419,6 +2450,126 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.xxl,
     padding: theme.spacing.xl,
+  },
+  executorPageScroll: {
+    flexGrow: 1,
+    paddingHorizontal: theme.spacing.xl,
+    paddingTop: theme.spacing.xl,
+    paddingBottom: theme.spacing.xxl,
+  },
+  executorSelectionPage: {
+    flex: 1,
+    alignItems: 'center',
+    gap: theme.spacing.lg,
+  },
+  executorPageTitle: {
+    fontSize: theme.typography.sizes.xxxl,
+    fontWeight: theme.typography.weights.bold as any,
+    color: theme.colors.text,
+    textAlign: 'center',
+  },
+  executorIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  executorInfoPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    backgroundColor: theme.colors.primary + '12',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.full,
+  },
+  executorInfoPillText: {
+    color: theme.colors.primary,
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  executorPageSubtitle: {
+    fontSize: theme.typography.sizes.xl,
+    color: theme.colors.text,
+    fontWeight: theme.typography.weights.semibold as any,
+    textAlign: 'center',
+  },
+  executorModalSubtitle: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: theme.spacing.lg,
+  },
+  executorModalDescription: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.lg,
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+  },
+  executorChoiceButton: {
+    width: '100%',
+    borderRadius: theme.borderRadius.xl,
+    paddingVertical: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.lg,
+  },
+  executorChoiceButtonOutline: {
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.surface,
+  },
+  executorChoiceButtonOutlineText: {
+    color: theme.colors.primary,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    textAlign: 'center',
+  },
+  executorChoiceButtonFilled: {
+    backgroundColor: theme.colors.primary,
+  },
+  executorChoiceButtonFilledText: {
+    color: theme.colors.buttonText,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    textAlign: 'center',
+  },
+  executorCancelText: {
+    marginTop: theme.spacing.xl,
+    color: theme.colors.primary,
+    fontSize: theme.typography.sizes.md,
+    textDecorationLine: 'underline',
+  },
+  executorDetailsPage: {
+    flex: 1,
+    gap: theme.spacing.md,
+  },
+  executorBackButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+    marginBottom: theme.spacing.sm,
+  },
+  executorBackButtonText: {
+    color: theme.colors.primary,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  executorModalPrimaryButton: {
+    marginTop: theme.spacing.lg,
+    alignSelf: 'stretch',
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.buttonPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  executorModalPrimaryButtonDisabled: {
+    backgroundColor: theme.colors.border,
+    opacity: 0.5,
+  },
+  executorModalPrimaryButtonText: {
+    color: theme.colors.buttonText,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
   },
   modalTitle: {
     fontSize: theme.typography.sizes.xl,

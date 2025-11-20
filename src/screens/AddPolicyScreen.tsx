@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -25,15 +25,10 @@ const { width } = Dimensions.get('window');
 
 interface AddPolicyScreenProps {
   navigation: any;
+  route?: any;
 }
 
-const policyTypes = [
-  'life_insurance',
-  'health_insurance',
-  'property_insurance',
-  'vehicle_insurance',
-  'other',
-];
+const policyTypes = ['retirement_annuity', 'life_insurance', 'other'];
 
 const policyTypeDescriptions: Record<string, { title: string; subtitle: string }> = {
   life_insurance: {
@@ -41,20 +36,10 @@ const policyTypeDescriptions: Record<string, { title: string; subtitle: string }
     subtitle:
       'Life cover pays out a lump sum to beneficiaries when the policyholder passes away. Capture policy number, insurer, and nominated beneficiaries. Confirm whether any binding beneficiary nominations already exist with the insurer.',
   },
-  health_insurance: {
-    title: 'Health Insurance Policy Guide',
+  retirement_annuity: {
+    title: 'Retirement Annuity Guide',
     subtitle:
-      'Comprehensive or gap cover policies may provide additional medical benefits. Document waiting periods, dependants, and benefits. Speak to an attorney or broker regarding transfer or continuation rules.',
-  },
-  property_insurance: {
-    title: 'Property Insurance Guide',
-    subtitle:
-      'Homeowner’s policies protect buildings against damage or loss. Record insurer, cover limits, and any bond-holder requirements. Ensure executor or beneficiary knows to update ownership after transfer.',
-  },
-  vehicle_insurance: {
-    title: 'Vehicle Insurance Guide',
-    subtitle:
-      'Vehicle cover includes comprehensive, third-party, fire, and theft policies. Note premium status, nominated drivers, and claims history. Executors must arrange cancellation or transfer when ownership changes.',
+      'Capture fund administrator, policy number, and any annuitant notes. Confirm beneficiary nominations with your provider to ensure payouts align with your estate plan.',
   },
   other: {
     title: 'Other Policy Guide',
@@ -66,7 +51,7 @@ const policyTypeDescriptions: Record<string, { title: string; subtitle: string }
 const getPolicyDisclaimer = () =>
   'Read more about policy, please consult an attorney for further information';
 
-const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
+const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) => {
   const { currentUser } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -77,23 +62,43 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
   const [toastType, setToastType] = useState<'error' | 'success' | 'info'>('error');
   const [infoModalVisible, setInfoModalVisible] = useState(false);
   const [infoModalContent, setInfoModalContent] = useState<{ title: string; subtitle: string } | null>(null);
+  const [showFirstTimeModal, setShowFirstTimeModal] = useState(false);
+  const [showLinkExplainerModal, setShowLinkExplainerModal] = useState(false);
+  const [linkExplainerShown, setLinkExplainerShown] = useState(false);
 
   const [formData, setFormData] = useState({
     policyNumber: '',
     policyType: '',
+    otherPolicyType: '',
     insuranceCompany: '',
     policyValue: '',
     policyDescription: '',
   });
 
   const totalSteps = 3;
+  const fromGuidedWill = route?.params?.fromGuidedWill ?? false;
+
+  useEffect(() => {
+    if (route?.params?.showFirstTimeExplainer) {
+      setShowFirstTimeModal(true);
+    }
+  }, [route?.params?.showFirstTimeExplainer]);
 
   const updateFormData = (field: string, value: string) => {
     if (field === 'policyValue') {
       setFormData(prev => ({ ...prev, [field]: formatCurrencyInput(value) }));
       return;
     }
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      if (field === 'policyType') {
+        return {
+          ...prev,
+          policyType: value,
+          otherPolicyType: value === 'other' ? prev.otherPolicyType : '',
+        };
+      }
+      return { ...prev, [field]: value };
+    });
   };
 
   const openPolicyInfo = (policyType: string) => {
@@ -106,6 +111,14 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
   const closePolicyInfo = () => {
     setInfoModalVisible(false);
     setInfoModalContent(null);
+  };
+
+  const handleLinkBeneficiaryRequest = () => {
+    if (fromGuidedWill && !linkExplainerShown) {
+      setShowLinkExplainerModal(true);
+    } else {
+      handleSavePolicy('link');
+    }
   };
 
   const nextStep = async () => {
@@ -126,6 +139,29 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
         }
         if (!formData.insuranceCompany.trim()) {
           setToastMessage('Please enter an insurance company');
+          setToastType('error');
+          setShowToast(true);
+          return;
+        }
+        if (formData.policyType === 'other' && !formData.otherPolicyType.trim()) {
+          setToastMessage('Please specify your policy type');
+          setToastType('error');
+          setShowToast(true);
+          return;
+        }
+      } else if (currentStep === 1) {
+        if (!formData.policyValue.trim()) {
+          setToastMessage('Please enter a policy value');
+          setToastType('error');
+          setShowToast(true);
+          return;
+        }
+        setFormData(prev => ({
+          ...prev,
+          policyValue: formatCurrencyInput(prev.policyValue),
+        }));
+        if (!formData.policyDescription.trim()) {
+          setToastMessage('Please enter a policy description');
           setToastType('error');
           setShowToast(true);
           return;
@@ -165,7 +201,7 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
     }
   };
 
-  const handleSavePolicy = async () => {
+  const handleSavePolicy = async (nextAction: 'back' | 'link' = 'back') => {
     if (!currentUser) {
       setToastMessage('You must be logged in to add a policy');
       setToastType('error');
@@ -179,10 +215,13 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
       await PolicyService.createPolicy({
         user_id: currentUser.uid,
         policy_number: formData.policyNumber.trim(),
-        policy_type: formData.policyType as any,
+        policy_type:
+          formData.policyType === 'other'
+            ? formData.otherPolicyType.trim()
+            : (formData.policyType as any),
         insurance_company: formData.insuranceCompany.trim(),
-        policy_value: formData.policyValue ? parseCurrency(formData.policyValue) : undefined,
-        policy_description: formData.policyDescription.trim() || undefined,
+        policy_value: parseCurrency(formData.policyValue),
+        policy_description: formData.policyDescription.trim(),
         is_active: true,
       });
 
@@ -190,10 +229,16 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
       setToastType('success');
       setShowToast(true);
 
-      // Navigate back after a short delay
-      setTimeout(() => {
-        navigation.goBack();
-      }, 1500);
+      if (nextAction === 'link') {
+        navigation.navigate('AddBeneficiary', {
+          fromGuidedFlow: fromGuidedWill,
+          returnTo: fromGuidedWill ? 'Dashboard' : undefined,
+        });
+      } else {
+        setTimeout(() => {
+          navigation.goBack();
+        }, 1500);
+      }
     } catch (error: any) {
       setToastMessage(error.message || 'Failed to save policy');
       setToastType('error');
@@ -254,6 +299,14 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
 
             <TextInput
               style={styles.input}
+              placeholder="Insurance Company"
+              placeholderTextColor={theme.colors.placeholder}
+              value={formData.insuranceCompany}
+              onChangeText={(value) => updateFormData('insuranceCompany', value)}
+            />
+
+            <TextInput
+              style={styles.input}
               placeholder="Policy Number"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.policyNumber}
@@ -278,20 +331,22 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
               ))}
             </ScrollView>
 
+            {formData.policyType === 'other' && (
+              <TextInput
+                style={styles.input}
+                placeholder="Specify policy type"
+                placeholderTextColor={theme.colors.placeholder}
+                value={formData.otherPolicyType}
+                onChangeText={(value) => updateFormData('otherPolicyType', value)}
+              />
+            )}
+
             {formData.policyType ? (
               <TouchableOpacity style={styles.disclaimerBox} onPress={() => openPolicyInfo(formData.policyType)}>
                 <Ionicons name="information-circle" size={20} color={theme.colors.info} />
                 <Text style={styles.disclaimerText}>{getPolicyDisclaimer()}</Text>
               </TouchableOpacity>
             ) : null}
-
-            <TextInput
-              style={styles.input}
-              placeholder="Insurance Company"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.insuranceCompany}
-              onChangeText={(value) => updateFormData('insuranceCompany', value)}
-            />
           </Animated.View>
         );
 
@@ -306,7 +361,7 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
 
             <TextInput
               style={styles.input}
-              placeholder="Policy Value (Optional)"
+              placeholder="Policy Value"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.policyValue}
               onChangeText={(value) => updateFormData('policyValue', value)}
@@ -315,7 +370,7 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
 
             <TextInput
               style={styles.input}
-              placeholder="Description (Optional)"
+              placeholder="Description"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.policyDescription}
               onChangeText={(value) => updateFormData('policyDescription', value)}
@@ -341,7 +396,9 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
               <View style={styles.reviewRow}>
                 <Text style={styles.reviewLabel}>Type:</Text>
                 <Text style={styles.reviewValue}>
-                  {formData.policyType.charAt(0).toUpperCase() + formData.policyType.slice(1).replace('_', ' ')}
+                  {formData.policyType === 'other'
+                    ? formData.otherPolicyType
+                    : formData.policyType.charAt(0).toUpperCase() + formData.policyType.slice(1).replace('_', ' ')}
                 </Text>
               </View>
               <View style={styles.reviewRow}>
@@ -390,25 +447,51 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
           {renderStep()}
 
           <View style={styles.buttonContainer}>
-            {currentStep > 0 && (
-              <TouchableOpacity style={styles.backButton} onPress={previousStep}>
-                <Text style={styles.backButtonText}>Back</Text>
-              </TouchableOpacity>
-            )}
+            {currentStep === totalSteps - 1 ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.secondaryButton, saving && styles.secondaryButtonDisabled]}
+                  onPress={handleLinkBeneficiaryRequest}
+                  disabled={saving}
+                >
+                  <Text
+                    style={[
+                      styles.secondaryButtonText,
+                      saving && styles.secondaryButtonTextDisabled,
+                    ]}
+                  >
+                    Link Beneficiary
+                  </Text>
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.nextButton, currentStep === 0 && styles.nextButtonFull]}
-              onPress={nextStep}
-              disabled={saving}
-            >
-              {saving ? (
-                <ActivityIndicator color={theme.colors.buttonText} />
-              ) : (
-                <Text style={styles.nextButtonText}>
-                  {currentStep === totalSteps - 1 ? 'Save Policy' : 'Continue'}
-                </Text>
-              )}
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.nextButton}
+                  onPress={() => handleSavePolicy()}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <ActivityIndicator color={theme.colors.buttonText} />
+                  ) : (
+                    <Text style={styles.nextButtonText}>Save Policy</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.backButton} onPress={previousStep}>
+                  <Text style={styles.backButtonText}>Back</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
+                  <Text style={styles.nextButtonText}>Continue</Text>
+                </TouchableOpacity>
+                {currentStep > 0 && (
+                  <TouchableOpacity style={styles.backButton} onPress={previousStep}>
+                    <Text style={styles.backButtonText}>Back</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -435,6 +518,62 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation }) => {
             <Text style={styles.infoModalSubtitle}>{infoModalContent?.subtitle}</Text>
             <TouchableOpacity style={styles.infoModalButton} onPress={closePolicyInfo}>
               <Text style={styles.infoModalButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={showFirstTimeModal}
+        onRequestClose={() => setShowFirstTimeModal(false)}
+      >
+        <View style={styles.infoModalOverlay}>
+          <View style={styles.infoModalContainer}>
+            <Ionicons name="information-circle-outline" size={32} color={theme.colors.primary} />
+            <Text style={styles.infoModalTitle}>Add your policy details</Text>
+            <Text style={styles.infoModalSubtitle}>
+              Capture the policy number, insurer, and value so we can link beneficiaries immediately after saving.
+            </Text>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowFirstTimeModal(false)}
+            >
+              <Text style={styles.modalCloseText}>Understood</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={showLinkExplainerModal}
+        onRequestClose={() => setShowLinkExplainerModal(false)}
+      >
+        <View style={styles.infoModalOverlay}>
+          <View style={styles.infoModalContainer}>
+            <Ionicons name="people-circle-outline" size={32} color={theme.colors.primary} />
+            <Text style={styles.infoModalTitle}>Link a beneficiary</Text>
+            <Text style={styles.infoModalSubtitle}>
+              Linking now ensures this policy payout reaches the right person. You can adjust beneficiaries later if anything changes.
+            </Text>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => {
+                setShowLinkExplainerModal(false);
+                setLinkExplainerShown(true);
+                handleSavePolicy('link');
+              }}
+            >
+              <Text style={styles.modalCloseText}>Continue to Link</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalBackButton}
+              onPress={() => setShowLinkExplainerModal(false)}
+            >
+              <Text style={styles.modalBackText}>Maybe later</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -564,13 +703,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   buttonContainer: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     marginTop: theme.spacing.xl,
     gap: theme.spacing.md,
   },
   backButton: {
-    flex: 1,
-    height: 56,
+    width: '100%',
+    minHeight: 56,
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.xl,
     justifyContent: 'center',
@@ -584,20 +723,40 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
   },
   nextButton: {
-    flex: 1,
-    height: 56,
+    width: '100%',
+    minHeight: 56,
     backgroundColor: theme.colors.buttonPrimary,
     borderRadius: theme.borderRadius.xl,
     justifyContent: 'center',
     alignItems: 'center',
   },
   nextButtonFull: {
-    flex: 2,
+    width: '100%',
   },
   nextButtonText: {
     fontSize: theme.typography.sizes.lg,
     fontWeight: theme.typography.weights.semibold as any,
     color: theme.colors.buttonText,
+  },
+  secondaryButton: {
+    width: '100%',
+    minHeight: 56,
+    borderRadius: theme.borderRadius.xl,
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  secondaryButtonDisabled: {
+    opacity: 0.5,
+  },
+  secondaryButtonText: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.primary,
+  },
+  secondaryButtonTextDisabled: {
+    color: theme.colors.textSecondary,
   },
   infoModalOverlay: {
     flex: 1,
@@ -628,6 +787,29 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
     marginBottom: theme.spacing.xl,
+  },
+  modalCloseButton: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.buttonPrimary,
+    marginTop: theme.spacing.md,
+  },
+  modalCloseText: {
+    color: theme.colors.buttonText,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  modalBackButton: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.sm,
+  },
+  modalBackText: {
+    color: theme.colors.primary,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.medium as any,
   },
   infoModalButton: {
     alignSelf: 'flex-end',

@@ -56,7 +56,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     useState<Record<string, BeneficiaryInformation[]>>({});
   const [expandedAssets, setExpandedAssets] = useState<Record<string, boolean>>({});
   const [expandedPolicies, setExpandedPolicies] = useState<Record<string, boolean>>({});
-  const [selectedManagement, setSelectedManagement] = useState<'assets' | 'policies' | 'all' | null>(null);
+  const [selectedManagement, setSelectedManagement] = useState<'assets' | null>(null);
   const [showBeneficiariesModal, setShowBeneficiariesModal] = useState(false);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [notificationTab, setNotificationTab] = useState<'new' | 'older'>('new');
@@ -74,6 +74,19 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     phone: '',
   });
   const [inlineSaving, setInlineSaving] = useState(false);
+  const [showBeneficiarySelectionModal, setShowBeneficiarySelectionModal] = useState(false);
+  const [beneficiarySelectionTarget, setBeneficiarySelectionTarget] =
+    useState<{ type: 'asset' | 'policy'; id: string } | null>(null);
+  const [allBeneficiaries, setAllBeneficiaries] = useState<BeneficiaryInformation[]>([]);
+  const [showLinkAssetPolicyModal, setShowLinkAssetPolicyModal] = useState(false);
+  const [selectedBeneficiaryForLinking, setSelectedBeneficiaryForLinking] = useState<BeneficiaryInformation | null>(null);
+  const [estateValue, setEstateValue] = useState(0);
+
+  const formatCurrencyValue = (value: number) =>
+    `R ${value.toLocaleString('en-ZA', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
 
   const beneficiarySummaries = useMemo(() => {
     const summaries: Record<
@@ -210,15 +223,19 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       const userAssets = await AssetService.getUserAssets(currentUser.uid);
       setAssets(userAssets);
       setAssetsCount(userAssets.length);
+      const assetsTotal = userAssets.reduce((sum, asset) => sum + (asset.asset_value || 0), 0);
 
       // Fetch policies
       const userPolicies = await PolicyService.getUserPolicies(currentUser.uid);
       setPolicies(userPolicies);
       setPoliciesCount(userPolicies.length);
+      const policiesTotal = userPolicies.reduce((sum, policy) => sum + (policy.policy_value || 0), 0);
+      setEstateValue(assetsTotal + policiesTotal);
 
       // Fetch beneficiaries count
       const beneficiaries = await BeneficiaryService.getUserBeneficiaries(currentUser.uid);
       setBeneficiariesCount(beneficiaries.length);
+      setAllBeneficiaries(beneficiaries);
 
       // Check if user has uploaded a will
       const wills = await WillService.getUserWills(currentUser.uid);
@@ -277,16 +294,14 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   };
 
   const handleAddAssetPolicy = () => {
-    setShowAssetPolicyModal(true);
+    navigation.navigate('AddAsset');
   };
 
   const handleAddAsset = () => {
-    setShowAssetPolicyModal(false);
     navigation.navigate('AddAsset');
   };
 
   const handleAddPolicy = () => {
-    setShowAssetPolicyModal(false);
     navigation.navigate('AddPolicy');
   };
 
@@ -304,8 +319,8 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     navigation.navigate('UploadWill');
   };
 
-  const handleUpdateProfile = () => {
-    navigation.navigate('UpdateProfile');
+  const handleCODCalculator = () => {
+    navigation.navigate('CODCalculator');
   };
 
   const toggleAssetRow = (assetId: string) => {
@@ -323,7 +338,15 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   };
 
   const beginInlineAdd = (type: 'asset' | 'policy', id: string) => {
-    setInlineTarget({ type, id });
+    // Show selection modal to choose between new or existing beneficiary
+    setBeneficiarySelectionTarget({ type, id });
+    setShowBeneficiarySelectionModal(true);
+  };
+
+  const handleCreateNewBeneficiary = () => {
+    if (!beneficiarySelectionTarget) return;
+    setShowBeneficiarySelectionModal(false);
+    setInlineTarget(beneficiarySelectionTarget);
     setInlineForm({
       firstName: '',
       surname: '',
@@ -331,6 +354,68 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       email: '',
       phone: '',
     });
+  };
+
+  const handleSelectExistingBeneficiary = async (beneficiary: BeneficiaryInformation) => {
+    if (!beneficiarySelectionTarget || !currentUser) return;
+
+    setShowBeneficiarySelectionModal(false);
+
+    try {
+      // Check if already linked
+      const existing = beneficiarySelectionTarget.type === 'asset'
+        ? assetBeneficiaries[beneficiarySelectionTarget.id] || []
+        : policyBeneficiaries[beneficiarySelectionTarget.id] || [];
+
+      if (existing.some(b => b.beneficiary_id === beneficiary.beneficiary_id)) {
+        setToastMessage('This beneficiary is already linked to this ' + beneficiarySelectionTarget.type);
+        setToastType('error');
+        setShowToast(true);
+        return;
+      }
+
+      // Link the beneficiary
+      if (beneficiarySelectionTarget.type === 'asset') {
+        await BeneficiaryService.linkAssetToBeneficiary(
+          beneficiarySelectionTarget.id,
+          beneficiary.beneficiary_id,
+          100,
+          'equal_split'
+        );
+        setAssetBeneficiaries(prev => ({
+          ...prev,
+          [beneficiarySelectionTarget.id]: [
+            ...(prev[beneficiarySelectionTarget.id] || []),
+            beneficiary,
+          ],
+        }));
+        setExpandedAssets(prev => ({ ...prev, [beneficiarySelectionTarget.id]: true }));
+      } else {
+        await BeneficiaryService.linkPolicyToBeneficiary(
+          beneficiarySelectionTarget.id,
+          beneficiary.beneficiary_id,
+          100,
+          'equal_split'
+        );
+        setPolicyBeneficiaries(prev => ({
+          ...prev,
+          [beneficiarySelectionTarget.id]: [
+            ...(prev[beneficiarySelectionTarget.id] || []),
+            beneficiary,
+          ],
+        }));
+        setExpandedPolicies(prev => ({ ...prev, [beneficiarySelectionTarget.id]: true }));
+      }
+
+      setToastMessage('Beneficiary linked successfully.');
+      setToastType('success');
+      setShowToast(true);
+    } catch (error) {
+      console.error('Error linking beneficiary:', error);
+      setToastMessage('Failed to link beneficiary. Please try again.');
+      setToastType('error');
+      setShowToast(true);
+    }
   };
 
   const cancelInlineAdd = () => {
@@ -606,6 +691,81 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     ]);
   };
 
+  const handleOpenLinkModal = (beneficiary: BeneficiaryInformation) => {
+    setSelectedBeneficiaryForLinking(beneficiary);
+    // Close the overview modal before opening the link modal to avoid stacked-modals issues
+    setShowBeneficiariesModal(false);
+    requestAnimationFrame(() => {
+      setShowLinkAssetPolicyModal(true);
+    });
+  };
+
+  const handleLinkToAssetOrPolicy = async (type: 'asset' | 'policy', id: string) => {
+    if (!selectedBeneficiaryForLinking || !currentUser) return;
+
+    setShowLinkAssetPolicyModal(false);
+
+    try {
+      // Check if already linked
+      const existing = type === 'asset'
+        ? assetBeneficiaries[id] || []
+        : policyBeneficiaries[id] || [];
+
+      if (existing.some(b => b.beneficiary_id === selectedBeneficiaryForLinking.beneficiary_id)) {
+        setToastMessage('This beneficiary is already linked to this ' + type);
+        setToastType('error');
+        setShowToast(true);
+        return;
+      }
+
+      // Link the beneficiary
+      if (type === 'asset') {
+        await BeneficiaryService.linkAssetToBeneficiary(
+          id,
+          selectedBeneficiaryForLinking.beneficiary_id,
+          100,
+          'equal_split'
+        );
+        setAssetBeneficiaries(prev => ({
+          ...prev,
+          [id]: [
+            ...(prev[id] || []),
+            selectedBeneficiaryForLinking,
+          ],
+        }));
+        setExpandedAssets(prev => ({ ...prev, [id]: true }));
+      } else {
+        await BeneficiaryService.linkPolicyToBeneficiary(
+          id,
+          selectedBeneficiaryForLinking.beneficiary_id,
+          100,
+          'equal_split'
+        );
+        setPolicyBeneficiaries(prev => ({
+          ...prev,
+          [id]: [
+            ...(prev[id] || []),
+            selectedBeneficiaryForLinking,
+          ],
+        }));
+        setExpandedPolicies(prev => ({ ...prev, [id]: true }));
+      }
+
+      setToastMessage('Beneficiary linked successfully.');
+      setToastType('success');
+      setShowToast(true);
+      setSelectedBeneficiaryForLinking(null);
+      
+      // Refresh dashboard data
+      await loadDashboardData();
+    } catch (error) {
+      console.error('Error linking beneficiary:', error);
+      setToastMessage('Failed to link beneficiary. Please try again.');
+      setToastType('error');
+      setShowToast(true);
+    }
+  };
+
   const handleDeletePolicy = (policy: PolicyInformation) => {
     const linkedBeneficiaries = policyBeneficiaries[policy.policy_id] || [];
     const warningMessage = linkedBeneficiaries.length > 0
@@ -865,58 +1025,19 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     );
   };
 
-  const renderAssetsManager = () => (
-    <View style={styles.managementSection}>
-      <Text style={styles.managementToggleTitle}>Assets ({assets.length})</Text>
-      <View style={styles.managementList}>
-        {assets.length === 0 ? (
-          <TouchableOpacity 
-            style={styles.managementEmptyButton}
-            onPress={() => navigation.navigate('AddAsset')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.managementEmptyText}>No assets added yet</Text>
-          </TouchableOpacity>
-        ) : (
-          assets.map(renderAssetCard)
-        )}
-      </View>
-    </View>
-  );
-
-  const renderPoliciesManager = () => (
-    <View style={styles.managementSection}>
-      <Text style={styles.managementToggleTitle}>Policies ({policies.length})</Text>
-      <View style={styles.managementList}>
-        {policies.length === 0 ? (
-          <TouchableOpacity 
-            style={styles.managementEmptyButton}
-            onPress={() => navigation.navigate('AddPolicy')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.managementEmptyText}>No policies added yet</Text>
-          </TouchableOpacity>
-        ) : (
-          policies.map(renderPolicyCard)
-        )}
-      </View>
-    </View>
-  );
-
-  const renderAllItemsManager = () => {
-    // Combine assets and policies and sort by created_at (latest first)
+  const renderAssetsManager = () => {
     const allItems = [
       ...assets.map(asset => ({ ...asset, type: 'asset' as const })),
-      ...policies.map(policy => ({ ...policy, type: 'policy' as const }))
+      ...policies.map(policy => ({ ...policy, type: 'policy' as const })),
     ].sort((a, b) => {
       const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return dateB - dateA; // Latest first
+      return dateB - dateA;
     });
 
     return (
       <View style={styles.managementSection}>
-        <Text style={styles.managementToggleTitle}>All Assets & Policies ({allItems.length})</Text>
+        <Text style={styles.managementToggleTitle}>Assets ({allItems.length})</Text>
         <View style={styles.managementList}>
           {allItems.length === 0 ? (
             <TouchableOpacity 
@@ -993,7 +1114,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
         {/* Navigation Tabs */}
         <View style={styles.navTabsCard}>
-          <View style={styles.navTabs}>
+        <View style={styles.navTabs}>
             <TouchableOpacity
               style={[
                 styles.navTab,
@@ -1004,19 +1125,19 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               }
             >
               {renderAssetNavIcon()}
-              <Text style={styles.navTabNumber}>{assetsCount}</Text>
-            </TouchableOpacity>
+            <Text style={styles.navTabNumber}>{assetsCount}</Text>
+          </TouchableOpacity>
 
-            <View style={styles.navTabCenter}>
-              {userProfile?.profile_picture_path ? (
-                <Image
-                  source={{ uri: userProfile.profile_picture_path }}
-                  style={styles.profilePicture}
-                />
-              ) : (
-                <View style={styles.centerCircle} />
-              )}
-            </View>
+          <View style={styles.navTabCenter}>
+            {userProfile?.profile_picture_path ? (
+              <Image
+                source={{ uri: userProfile.profile_picture_path }}
+                style={styles.profilePicture}
+              />
+            ) : (
+              <View style={styles.centerCircle} />
+            )}
+          </View>
 
             <TouchableOpacity
               style={[
@@ -1025,30 +1146,21 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               ]}
               onPress={() => setShowBeneficiariesModal(true)}
             >
-              <Ionicons name="people" size={28} color={theme.colors.primary} />
-              <Text style={styles.navTabNumber}>{beneficiariesCount}</Text>
-            </TouchableOpacity>
+            <Ionicons name="people" size={28} color={theme.colors.primary} />
+            <Text style={styles.navTabNumber}>{beneficiariesCount}</Text>
+          </TouchableOpacity>
           </View>
         </View>
 
-        <TouchableOpacity 
-          style={styles.assetsPoliciesPill}
-          onPress={() => {
-            if (assetsCount > 0 || policiesCount > 0) {
-              setSelectedManagement(prev => (prev === 'all' ? null : 'all'));
-            }
-          }}
-          activeOpacity={assetsCount > 0 || policiesCount > 0 ? 0.7 : 1}
-        >
+        <View style={styles.assetsPoliciesPill}>
           <TouchableOpacity
             style={[
               styles.assetsPoliciesTab,
               selectedManagement === 'assets' && styles.assetsPoliciesTabActive,
             ]}
-            onPress={(e) => {
-              e.stopPropagation();
-              setSelectedManagement(prev => (prev === 'assets' ? null : 'assets'));
-            }}
+            onPress={() =>
+              setSelectedManagement(prev => (prev === 'assets' ? null : 'assets'))
+            }
           >
             <Text
               style={[
@@ -1059,50 +1171,25 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               Assets
             </Text>
           </TouchableOpacity>
-
-          <Text style={styles.assetsPoliciesDivider}>|</Text>
-
-          <TouchableOpacity
-            style={[
-              styles.assetsPoliciesTab,
-              selectedManagement === 'policies' && styles.assetsPoliciesTabActive,
-            ]}
-            onPress={(e) => {
-              e.stopPropagation();
-              setSelectedManagement(prev => (prev === 'policies' ? null : 'policies'));
-            }}
-          >
-            <Text
-              style={[
-                styles.assetsPoliciesTabText,
-                selectedManagement === 'policies' && styles.assetsPoliciesTabTextActive,
-              ]}
-            >
-              Policies
-            </Text>
-          </TouchableOpacity>
-
-          {(assetsCount > 0 || policiesCount > 0) && (
-            <TouchableOpacity
-              style={styles.assetsPoliciesInfoButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                setSelectedManagement(prev => (prev === 'all' ? null : 'all'));
-              }}
-            >
-              <Ionicons name="information-circle-outline" size={24} color={theme.colors.primary} />
-            </TouchableOpacity>
-          )}
-        </TouchableOpacity>
+        </View>
 
         {selectedManagement === 'assets' && renderAssetsManager()}
-        {selectedManagement === 'policies' && renderPoliciesManager()}
-        {selectedManagement === 'all' && renderAllItemsManager()}
 
         {/* Action Buttons */}
         <View style={styles.actionsContainer}>
           <TouchableOpacity style={styles.actionButton} onPress={handleAddAssetPolicy}>
-            <Text style={styles.actionButtonText}>Add Your Assets / Policy</Text>
+            <Text style={styles.actionButtonText}>Add Asset</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionButton} onPress={handleUploadWill}>
+            <View style={styles.uploadWillButton}>
+              <Text style={styles.actionButtonText}>{hasWill ? 'Edit Will' : 'Draft will'}</Text>
+              {!hasWill && (
+                <View style={styles.urgentIndicator}>
+                  <Text style={styles.urgentText}>!</Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -1121,19 +1208,9 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionButton} onPress={handleUploadWill}>
-            <View style={styles.uploadWillButton}>
-              <Text style={styles.actionButtonText}>{hasWill ? 'Edit Will' : 'Upload Will'}</Text>
-              {!hasWill && (
-                <View style={styles.urgentIndicator}>
-                  <Text style={styles.urgentText}>!</Text>
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionButton} onPress={handleUpdateProfile}>
-            <Text style={styles.actionButtonText}>Update Profile</Text>
+          <TouchableOpacity style={styles.actionButton} onPress={handleCODCalculator}>
+            <Ionicons name="calculator" size={20} color={theme.colors.buttonText} style={styles.actionButtonIcon} />
+            <Text style={styles.actionButtonText}>COD Calculator</Text>
           </TouchableOpacity>
         </View>
 
@@ -1165,6 +1242,11 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             </View>
 
             <View style={styles.statusRow}>
+              <Text style={styles.statusLabel}>Estate Value</Text>
+              <Text style={styles.statusValue}>{formatCurrencyValue(estateValue)}</Text>
+            </View>
+
+            <View style={styles.statusRow}>
               <Text style={styles.statusLabel}>Beneficiaries</Text>
               <Text style={styles.statusValue}>{beneficiariesCount}</Text>
             </View>
@@ -1191,53 +1273,76 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               contentContainerStyle={styles.beneficiaryModalScrollContent}
               showsVerticalScrollIndicator={false}
             >
-              {beneficiarySummaries.length === 0 ? (
-                <Text style={styles.beneficiaryModalEmpty}>
-                  No beneficiaries linked yet.
-                </Text>
+              {allBeneficiaries.length === 0 ? (
+                <View style={styles.beneficiaryModalEmptyState}>
+                  <Ionicons name="people-outline" size={60} color={theme.colors.textSecondary} />
+                  <Text style={styles.beneficiaryModalEmpty}>
+                    No beneficiaries created yet.
+                  </Text>
+                  <Text style={styles.beneficiaryModalEmptySubtext}>
+                    Add beneficiaries to start managing your estate
+                  </Text>
+                </View>
               ) : (
-                beneficiarySummaries.map(summary => {
+                allBeneficiaries.map(beneficiary => {
+                  const summary = beneficiarySummaries.find(s => s.beneficiary.beneficiary_id === beneficiary.beneficiary_id);
+                  const linkedAssets = summary?.assets || [];
+                  const linkedPolicies = summary?.policies || [];
+                  const totalLinks = linkedAssets.length + linkedPolicies.length;
+
                   const displayName =
-                    summary.beneficiary.beneficiary_name ||
-                    `${summary.beneficiary.beneficiary_first_name || ''} ${
-                      summary.beneficiary.beneficiary_surname || ''
+                    beneficiary.beneficiary_name ||
+                    `${beneficiary.beneficiary_first_name || ''} ${
+                      beneficiary.beneficiary_surname || ''
                     }`.trim() ||
                     'Unnamed Beneficiary';
 
                   return (
                     <View
-                      key={summary.beneficiary.beneficiary_id}
+                      key={beneficiary.beneficiary_id}
                       style={styles.beneficiaryModalCard}
                     >
-                      <Text style={styles.beneficiaryModalName}>{displayName}</Text>
-                      {summary.beneficiary.relationship_to_user ? (
+                      <View style={styles.beneficiaryModalCardHeader}>
+                        <View style={styles.beneficiaryModalCardHeaderLeft}>
+                          <Text style={styles.beneficiaryModalName}>{displayName}</Text>
+                          {totalLinks > 0 && (
+                            <View style={styles.beneficiaryModalLinkBadge}>
+                              <Text style={styles.beneficiaryModalLinkBadgeText}>
+                                {totalLinks} link{totalLinks !== 1 ? 's' : ''}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+
+                      {beneficiary.relationship_to_user ? (
                         <Text style={styles.beneficiaryModalMeta}>
-                          Relationship: {summary.beneficiary.relationship_to_user}
+                          Relationship: {beneficiary.relationship_to_user}
                         </Text>
                       ) : null}
-                      {summary.beneficiary.beneficiary_email ? (
+                      {beneficiary.beneficiary_email ? (
                         <Text style={styles.beneficiaryModalMeta}>
-                          Email: {summary.beneficiary.beneficiary_email}
+                          Email: {beneficiary.beneficiary_email}
                         </Text>
                       ) : null}
-                      {summary.beneficiary.beneficiary_phone ? (
+                      {beneficiary.beneficiary_phone ? (
                         <Text style={styles.beneficiaryModalMeta}>
-                          Phone: {summary.beneficiary.beneficiary_phone}
+                          Phone: {beneficiary.beneficiary_phone}
                         </Text>
                       ) : null}
 
                       <View style={styles.beneficiaryModalSection}>
                         <Text style={styles.beneficiaryModalSectionTitle}>Assets</Text>
-                        {summary.assets.length === 0 ? (
+                        {linkedAssets.length === 0 ? (
                           <Text style={styles.beneficiaryModalEmptyItem}>
                             Not linked to any assets yet.
                           </Text>
                         ) : (
-                          summary.assets.map(asset => (
+                          linkedAssets.map(asset => (
                             <View key={asset.asset_id} style={styles.beneficiaryModalItemRow}>
                               <Text style={styles.beneficiaryModalItem}>• {asset.asset_name}</Text>
                               <TouchableOpacity
-                                onPress={() => handleDelinkBeneficiaryFromItem('asset', asset.asset_id, summary.beneficiary)}
+                                onPress={() => handleDelinkBeneficiaryFromItem('asset', asset.asset_id, beneficiary)}
                                 style={styles.beneficiaryModalDelinkButton}
                               >
                                 <Ionicons name="close-circle" size={20} color={theme.colors.error} />
@@ -1249,16 +1354,16 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
                       <View style={styles.beneficiaryModalSection}>
                         <Text style={styles.beneficiaryModalSectionTitle}>Policies</Text>
-                        {summary.policies.length === 0 ? (
+                        {linkedPolicies.length === 0 ? (
                           <Text style={styles.beneficiaryModalEmptyItem}>
                             Not linked to any policies yet.
                           </Text>
                         ) : (
-                          summary.policies.map(policy => (
+                          linkedPolicies.map(policy => (
                             <View key={policy.policy_id} style={styles.beneficiaryModalItemRow}>
                               <Text style={styles.beneficiaryModalItem}>• {policy.policy_number} ({policy.insurance_company})</Text>
                               <TouchableOpacity
-                                onPress={() => handleDelinkBeneficiaryFromItem('policy', policy.policy_id, summary.beneficiary)}
+                                onPress={() => handleDelinkBeneficiaryFromItem('policy', policy.policy_id, beneficiary)}
                                 style={styles.beneficiaryModalDelinkButton}
                               >
                                 <Ionicons name="close-circle" size={20} color={theme.colors.error} />
@@ -1270,11 +1375,18 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
                       <View style={styles.beneficiaryModalActions}>
                         <TouchableOpacity
+                          style={styles.beneficiaryModalLinkButton}
+                          onPress={() => handleOpenLinkModal(beneficiary)}
+                        >
+                          <Ionicons name="link-outline" size={18} color={theme.colors.primary} />
+                          <Text style={styles.beneficiaryModalLinkButtonText}>Link to Asset/Policy</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
                           style={styles.beneficiaryModalDeleteButton}
-                          onPress={() => handleDeleteBeneficiary(summary.beneficiary)}
+                          onPress={() => handleDeleteBeneficiary(beneficiary)}
                         >
                           <Ionicons name="trash-outline" size={18} color={theme.colors.error} />
-                          <Text style={styles.beneficiaryModalDeleteButtonText}>Delete Beneficiary</Text>
+                          <Text style={styles.beneficiaryModalDeleteButtonText}>Delete</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -1505,6 +1617,283 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         onLogout={handleLogout}
       />
 
+      {/* Link Asset/Policy Modal */}
+      <Modal
+        visible={showLinkAssetPolicyModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          setShowLinkAssetPolicyModal(false);
+          setSelectedBeneficiaryForLinking(null);
+        }}
+      >
+        <View style={styles.linkModalOverlay}>
+          <View style={styles.linkModalContent}>
+            <View style={styles.linkModalHeader}>
+              <Text style={styles.linkModalTitle}>Link to Asset or Policy</Text>
+              <TouchableOpacity onPress={() => {
+                setShowLinkAssetPolicyModal(false);
+                setSelectedBeneficiaryForLinking(null);
+              }}>
+                <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {selectedBeneficiaryForLinking && (
+              <View style={styles.linkModalBeneficiaryInfo}>
+                <Ionicons name="person-circle" size={32} color={theme.colors.primary} />
+                <View style={styles.linkModalBeneficiaryInfoText}>
+                  <Text style={styles.linkModalBeneficiaryName}>
+                    {selectedBeneficiaryForLinking.beneficiary_name ||
+                      `${selectedBeneficiaryForLinking.beneficiary_first_name || ''} ${selectedBeneficiaryForLinking.beneficiary_surname || ''}`.trim() ||
+                      'Unnamed Beneficiary'}
+                  </Text>
+                  {selectedBeneficiaryForLinking.relationship_to_user && (
+                    <Text style={styles.linkModalBeneficiaryRelationship}>
+                      {selectedBeneficiaryForLinking.relationship_to_user}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            )}
+
+            <ScrollView 
+              style={styles.linkModalScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Assets Section */}
+              {assets.length > 0 && (
+                <>
+                  <Text style={styles.linkModalSectionTitle}>Assets ({assets.length})</Text>
+                  {assets.map(asset => {
+                    const isLinked = (assetBeneficiaries[asset.asset_id] || []).some(
+                      b => b.beneficiary_id === selectedBeneficiaryForLinking?.beneficiary_id
+                    );
+
+                    return (
+                      <TouchableOpacity
+                        key={asset.asset_id}
+                        style={[
+                          styles.linkModalItem,
+                          isLinked && styles.linkModalItemDisabled,
+                        ]}
+                        onPress={() => !isLinked && handleLinkToAssetOrPolicy('asset', asset.asset_id)}
+                        disabled={isLinked}
+                      >
+                        <View style={styles.linkModalItemIcon}>
+                          <Ionicons
+                            name={isLinked ? "checkmark-circle" : "home-outline"}
+                            size={28}
+                            color={isLinked ? theme.colors.success : theme.colors.primary}
+                          />
+                        </View>
+                        <View style={styles.linkModalItemText}>
+                          <Text style={[
+                            styles.linkModalItemName,
+                            isLinked && styles.linkModalItemNameDisabled,
+                          ]}>
+                            {asset.asset_name}
+                          </Text>
+                          <Text style={styles.linkModalItemSubtext}>
+                            {asset.asset_type.replace('_', ' ')}
+                          </Text>
+                          {isLinked && (
+                            <Text style={styles.linkModalItemLinkedText}>Already linked</Text>
+                          )}
+                        </View>
+                        {!isLinked && (
+                          <Ionicons name="add-circle" size={24} color={theme.colors.success} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* Policies Section */}
+              {policies.length > 0 && (
+                <>
+                  <Text style={[styles.linkModalSectionTitle, assets.length > 0 && { marginTop: theme.spacing.xl }]}>
+                    Policies ({policies.length})
+                  </Text>
+                  {policies.map(policy => {
+                    const isLinked = (policyBeneficiaries[policy.policy_id] || []).some(
+                      b => b.beneficiary_id === selectedBeneficiaryForLinking?.beneficiary_id
+                    );
+
+                    return (
+                      <TouchableOpacity
+                        key={policy.policy_id}
+                        style={[
+                          styles.linkModalItem,
+                          isLinked && styles.linkModalItemDisabled,
+                        ]}
+                        onPress={() => !isLinked && handleLinkToAssetOrPolicy('policy', policy.policy_id)}
+                        disabled={isLinked}
+                      >
+                        <View style={styles.linkModalItemIcon}>
+                          <Ionicons
+                            name={isLinked ? "checkmark-circle" : "document-text-outline"}
+                            size={28}
+                            color={isLinked ? theme.colors.success : theme.colors.primary}
+                          />
+                        </View>
+                        <View style={styles.linkModalItemText}>
+                          <Text style={[
+                            styles.linkModalItemName,
+                            isLinked && styles.linkModalItemNameDisabled,
+                          ]}>
+                            {policy.policy_number}
+                          </Text>
+                          <Text style={styles.linkModalItemSubtext}>
+                            {policy.insurance_company} · {policy.policy_type.replace('_', ' ')}
+                          </Text>
+                          {isLinked && (
+                            <Text style={styles.linkModalItemLinkedText}>Already linked</Text>
+                          )}
+                        </View>
+                        {!isLinked && (
+                          <Ionicons name="add-circle" size={24} color={theme.colors.success} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* Empty State */}
+              {assets.length === 0 && policies.length === 0 && (
+                <View style={styles.linkModalEmpty}>
+                  <Ionicons name="folder-open-outline" size={60} color={theme.colors.textSecondary} />
+                  <Text style={styles.linkModalEmptyText}>No assets or policies yet</Text>
+                  <Text style={styles.linkModalEmptySubtext}>
+                    Add assets or policies to link beneficiaries
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Beneficiary Selection Modal */}
+      <Modal
+        visible={showBeneficiarySelectionModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowBeneficiarySelectionModal(false)}
+      >
+        <View style={styles.beneficiarySelectionOverlay}>
+          <View style={styles.beneficiarySelectionContent}>
+            <View style={styles.beneficiarySelectionHeader}>
+              <Text style={styles.beneficiarySelectionTitle}>Add Beneficiary</Text>
+              <TouchableOpacity onPress={() => setShowBeneficiarySelectionModal(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.beneficiarySelectionOption}
+              onPress={handleCreateNewBeneficiary}
+            >
+              <View style={styles.beneficiarySelectionIconContainer}>
+                <Ionicons name="person-add" size={24} color={theme.colors.primary} />
+              </View>
+              <View style={styles.beneficiarySelectionTextContainer}>
+                <Text style={styles.beneficiarySelectionOptionTitle}>Create New Beneficiary</Text>
+                <Text style={styles.beneficiarySelectionOptionSubtitle}>
+                  Add a new beneficiary and link to this {beneficiarySelectionTarget?.type}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+
+            <View style={styles.beneficiarySelectionDivider}>
+              <View style={styles.beneficiarySelectionDividerLine} />
+              <Text style={styles.beneficiarySelectionDividerText}>OR</Text>
+              <View style={styles.beneficiarySelectionDividerLine} />
+            </View>
+
+            <Text style={styles.beneficiarySelectionSubheading}>Select Existing Beneficiary</Text>
+
+            <ScrollView 
+              style={styles.beneficiarySelectionList}
+              showsVerticalScrollIndicator={false}
+            >
+              {allBeneficiaries.length === 0 ? (
+                <View style={styles.beneficiarySelectionEmpty}>
+                  <Ionicons name="people-outline" size={48} color={theme.colors.textSecondary} />
+                  <Text style={styles.beneficiarySelectionEmptyText}>
+                    No existing beneficiaries yet
+                  </Text>
+                  <Text style={styles.beneficiarySelectionEmptySubtext}>
+                    Create your first beneficiary to get started
+                  </Text>
+                </View>
+              ) : (
+                allBeneficiaries.map((beneficiary) => {
+                  const isLinked = beneficiarySelectionTarget?.type === 'asset'
+                    ? (assetBeneficiaries[beneficiarySelectionTarget?.id || ''] || []).some(
+                        (b: BeneficiaryInformation) => b.beneficiary_id === beneficiary.beneficiary_id
+                      )
+                    : (policyBeneficiaries[beneficiarySelectionTarget?.id || ''] || []).some(
+                        (b: BeneficiaryInformation) => b.beneficiary_id === beneficiary.beneficiary_id
+                      );
+
+                  const displayName =
+                    beneficiary.beneficiary_name ||
+                    `${beneficiary.beneficiary_first_name || ''} ${beneficiary.beneficiary_surname || ''}`.trim() ||
+                    'Unnamed Beneficiary';
+
+                  return (
+                    <TouchableOpacity
+                      key={beneficiary.beneficiary_id}
+                      style={[
+                        styles.beneficiarySelectionItem,
+                        isLinked && styles.beneficiarySelectionItemDisabled,
+                      ]}
+                      onPress={() => !isLinked && handleSelectExistingBeneficiary(beneficiary)}
+                      disabled={isLinked}
+                    >
+                      <View style={styles.beneficiarySelectionItemIcon}>
+                        <Ionicons
+                          name={isLinked ? "checkmark-circle" : "person-circle-outline"}
+                          size={32}
+                          color={isLinked ? theme.colors.success : theme.colors.primary}
+                        />
+                      </View>
+                      <View style={styles.beneficiarySelectionItemText}>
+                        <Text
+                          style={[
+                            styles.beneficiarySelectionItemName,
+                            isLinked && styles.beneficiarySelectionItemNameDisabled,
+                          ]}
+                        >
+                          {displayName}
+                        </Text>
+                        {beneficiary.relationship_to_user && (
+                          <Text style={styles.beneficiarySelectionItemRelationship}>
+                            {beneficiary.relationship_to_user}
+                          </Text>
+                        )}
+                        {isLinked && (
+                          <Text style={styles.beneficiarySelectionItemLinkedText}>
+                            Already linked
+                          </Text>
+                        )}
+                      </View>
+                      {!isLinked && (
+                        <Ionicons name="add-circle" size={24} color={theme.colors.success} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <Toast
         visible={showToast}
         message={toastMessage}
@@ -1632,9 +2021,9 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
   },
   assetsPoliciesTab: {
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.xl,
     paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.xl,
+    borderRadius: theme.borderRadius.full,
   },
   assetsPoliciesTabActive: {
     backgroundColor: theme.colors.primary + '20',
@@ -1647,17 +2036,6 @@ const styles = StyleSheet.create({
   },
   assetsPoliciesTabTextActive: {
     color: theme.colors.primary,
-  },
-  assetsPoliciesDivider: {
-    fontSize: theme.typography.sizes.lg,
-    fontWeight: theme.typography.weights.bold as any,
-    color: theme.colors.primary,
-    marginHorizontal: theme.spacing.sm,
-  },
-  assetsPoliciesInfoButton: {
-    position: 'absolute',
-    right: theme.spacing.md,
-    padding: theme.spacing.xs,
   },
   managementSection: {
     paddingHorizontal: theme.spacing.xl,
@@ -1843,9 +2221,13 @@ const styles = StyleSheet.create({
     height: 56,
     backgroundColor: theme.colors.primary,
     borderRadius: theme.borderRadius.xl,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: theme.spacing.md,
+  },
+  actionButtonIcon: {
+    marginRight: theme.spacing.sm,
   },
   actionButtonText: {
     fontSize: theme.typography.sizes.lg,
@@ -1955,11 +2337,45 @@ const styles = StyleSheet.create({
   beneficiaryModalScrollContent: {
     paddingBottom: theme.spacing.lg,
   },
+  beneficiaryModalEmptyState: {
+    alignItems: 'center',
+    paddingVertical: theme.spacing.xxxl,
+  },
   beneficiaryModalEmpty: {
     fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
     color: theme.colors.textSecondary,
     textAlign: 'center',
-    marginTop: theme.spacing.xl,
+    marginTop: theme.spacing.md,
+  },
+  beneficiaryModalEmptySubtext: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    marginTop: theme.spacing.xs,
+  },
+  beneficiaryModalCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing.sm,
+  },
+  beneficiaryModalCardHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  beneficiaryModalLinkBadge: {
+    backgroundColor: theme.colors.primary + '20',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs / 2,
+    borderRadius: theme.borderRadius.full,
+    marginLeft: theme.spacing.sm,
+  },
+  beneficiaryModalLinkBadgeText: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.weights.semibold as any,
   },
   beneficiaryModalCard: {
     borderWidth: 1,
@@ -2005,10 +2421,30 @@ const styles = StyleSheet.create({
     marginLeft: theme.spacing.xs,
   },
   beneficiaryModalActions: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
     marginTop: theme.spacing.md,
     paddingTop: theme.spacing.md,
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
+  },
+  beneficiaryModalLinkButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.primary + '15',
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+  },
+  beneficiaryModalLinkButtonText: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.primary,
+    marginLeft: theme.spacing.xs,
   },
   beneficiaryModalDeleteButton: {
     flexDirection: 'row',
@@ -2263,6 +2699,268 @@ const styles = StyleSheet.create({
   },
   notificationHistoryDismiss: {
     padding: theme.spacing.sm,
+  },
+  // Beneficiary Selection Modal Styles
+  beneficiarySelectionOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  beneficiarySelectionContent: {
+    backgroundColor: theme.colors.background,
+    borderTopLeftRadius: theme.borderRadius.xxl,
+    borderTopRightRadius: theme.borderRadius.xxl,
+    maxHeight: '80%',
+    paddingTop: theme.spacing.xl,
+    paddingBottom: theme.spacing.xxl,
+  },
+  beneficiarySelectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.xl,
+    paddingBottom: theme.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  beneficiarySelectionTitle: {
+    fontSize: theme.typography.sizes.xl,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+  },
+  beneficiarySelectionOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.xl,
+    paddingVertical: theme.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    marginHorizontal: theme.spacing.xl,
+    marginTop: theme.spacing.lg,
+    borderRadius: theme.borderRadius.xl,
+  },
+  beneficiarySelectionIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: theme.colors.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: theme.spacing.md,
+  },
+  beneficiarySelectionTextContainer: {
+    flex: 1,
+  },
+  beneficiarySelectionOptionTitle: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs / 2,
+  },
+  beneficiarySelectionOptionSubtitle: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+  },
+  beneficiarySelectionDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.xl,
+    marginVertical: theme.spacing.lg,
+  },
+  beneficiarySelectionDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: theme.colors.border,
+  },
+  beneficiarySelectionDividerText: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.textSecondary,
+    marginHorizontal: theme.spacing.md,
+  },
+  beneficiarySelectionSubheading: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    paddingHorizontal: theme.spacing.xl,
+    marginBottom: theme.spacing.md,
+  },
+  beneficiarySelectionList: {
+    paddingHorizontal: theme.spacing.xl,
+    maxHeight: 300,
+  },
+  beneficiarySelectionEmpty: {
+    alignItems: 'center',
+    paddingVertical: theme.spacing.xxxl,
+  },
+  beneficiarySelectionEmptyText: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.md,
+  },
+  beneficiarySelectionEmptySubtext: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.xs,
+  },
+  beneficiarySelectionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xl,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  beneficiarySelectionItemDisabled: {
+    opacity: 0.6,
+    backgroundColor: theme.colors.border + '40',
+  },
+  beneficiarySelectionItemIcon: {
+    marginRight: theme.spacing.md,
+  },
+  beneficiarySelectionItemText: {
+    flex: 1,
+  },
+  beneficiarySelectionItemName: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs / 2,
+  },
+  beneficiarySelectionItemNameDisabled: {
+    color: theme.colors.textSecondary,
+  },
+  beneficiarySelectionItemRelationship: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.xs / 2,
+  },
+  beneficiarySelectionItemLinkedText: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.success,
+    fontStyle: 'italic',
+  },
+  // Link Asset/Policy Modal Styles
+  linkModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  linkModalContent: {
+    backgroundColor: theme.colors.background,
+    borderTopLeftRadius: theme.borderRadius.xxl,
+    borderTopRightRadius: theme.borderRadius.xxl,
+    maxHeight: '75%',
+    paddingTop: theme.spacing.xl,
+    paddingBottom: theme.spacing.xxl,
+  },
+  linkModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.xl,
+    paddingBottom: theme.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  linkModalTitle: {
+    fontSize: theme.typography.sizes.xl,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+  },
+  linkModalBeneficiaryInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    marginHorizontal: theme.spacing.xl,
+    marginTop: theme.spacing.lg,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.xl,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  linkModalBeneficiaryInfoText: {
+    flex: 1,
+    marginLeft: theme.spacing.md,
+  },
+  linkModalBeneficiaryName: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+  },
+  linkModalBeneficiaryRelationship: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.xs / 2,
+  },
+  linkModalScroll: {
+    paddingHorizontal: theme.spacing.xl,
+    paddingTop: theme.spacing.lg,
+  },
+  linkModalSectionTitle: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
+  },
+  linkModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xl,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  linkModalItemDisabled: {
+    opacity: 0.6,
+    backgroundColor: theme.colors.border + '40',
+  },
+  linkModalItemIcon: {
+    marginRight: theme.spacing.md,
+  },
+  linkModalItemText: {
+    flex: 1,
+  },
+  linkModalItemName: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs / 2,
+  },
+  linkModalItemNameDisabled: {
+    color: theme.colors.textSecondary,
+  },
+  linkModalItemSubtext: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    textTransform: 'capitalize',
+  },
+  linkModalItemLinkedText: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.success,
+    fontStyle: 'italic',
+    marginTop: theme.spacing.xs / 2,
+  },
+  linkModalEmpty: {
+    alignItems: 'center',
+    paddingVertical: theme.spacing.xxxl,
+  },
+  linkModalEmptyText: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.md,
+  },
+  linkModalEmptySubtext: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.xs,
   },
 });
 

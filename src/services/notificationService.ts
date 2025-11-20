@@ -155,13 +155,13 @@ const getUserNotifications = async (userId: string): Promise<NotificationInforma
     await initializeNotificationsCollection();
     
     const notificationsRef = collection(db, NOTIFICATIONS_COLLECTION);
-    const q = query(
+      const q = query(
       notificationsRef,
-      where('user_id', '==', userId),
-      orderBy('created_at', 'desc')
-    );
+        where('user_id', '==', userId),
+        orderBy('created_at', 'desc')
+      );
 
-    const querySnapshot = await getDocs(q);
+      const querySnapshot = await getDocs(q);
     const notifications: NotificationInformation[] = [];
 
     querySnapshot.forEach((doc) => {
@@ -241,7 +241,7 @@ const getNewNotifications = async (userId: string): Promise<NotificationInformat
     querySnapshot.forEach((doc) => {
       const data = doc.data();
       notifications.push({
-        ...data,
+      ...data,
         created_at: convertTimestamp(data.created_at) || new Date(),
         read_at: convertTimestamp(data.read_at),
         dismissed_at: convertTimestamp(data.dismissed_at),

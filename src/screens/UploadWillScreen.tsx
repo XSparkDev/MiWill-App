@@ -13,7 +13,6 @@ import {
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Audio, Video, ResizeMode } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
@@ -27,6 +26,7 @@ import { WebView } from 'react-native-webview';
 
 interface UploadWillScreenProps {
   navigation: any;
+  route?: any;
 }
 
 type AiEditorSection = {
@@ -178,7 +178,7 @@ const PDF_HTML_WRAPPER = (base64Content: string) => `
 </html>
 `;
 
-const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
+const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }) => {
   const { currentUser } = useAuth();
   const [uploadType, setUploadType] = useState<'file' | 'video' | 'audio' | null>(null);
   const [selectedFile, setSelectedFile] = useState<any>(null);
@@ -285,6 +285,49 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
       console.warn('Unable to parse document content, using default template', error);
       return null;
     }
+  };
+
+  const [showFirstTimeGuidedModal, setShowFirstTimeGuidedModal] = useState(false);
+  const [guidedFlowActive, setGuidedFlowActive] = useState(false);
+  const guidedWillPulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (route?.params?.firstTimeGuidedFlow) {
+      setShowFirstTimeGuidedModal(true);
+      setGuidedFlowActive(true);
+      navigation.setParams?.({ firstTimeGuidedFlow: false });
+    }
+  }, [route?.params?.firstTimeGuidedFlow, navigation]);
+
+  useEffect(() => {
+    if (guidedFlowActive) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(guidedWillPulseAnim, {
+            toValue: 1.05,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(guidedWillPulseAnim, {
+            toValue: 0.97,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    } else {
+      guidedWillPulseAnim.setValue(1);
+    }
+  }, [guidedFlowActive, guidedWillPulseAnim]);
+
+  const handleGuidedWill = () => {
+    setGuidedFlowActive(false);
+    navigation.navigate('AddAsset', {
+      showFirstTimeExplainer: true,
+      fromGuidedWill: true,
+    });
   };
 
   const openAiAssistant = async () => {
@@ -767,71 +810,6 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
     </View>
   );
 
-  const pickDocument = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: [
-          'application/pdf',
-          'text/plain',
-          'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        ],
-        copyToCacheDirectory: true,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        const willName = generateWillName();
-        const extension = asset.name?.split('.').pop() || 'pdf';
-        const fileData = { ...asset, name: `${willName}.${extension}` };
-        setSelectedFile(fileData);
-        setUploadType('file');
-        setSelectedVideo(null);
-        setSelectedAudio(null);
-        
-        // Automatically show preview
-        setPreviewSource({ type: 'file', uri: fileData.uri, name: fileData.name });
-        setShowPreviewModal(true);
-        // Load document preview for PDFs
-        await loadPreviewDocument(fileData.uri);
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to pick document');
-    }
-  };
-
-  const pickVideo = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Media library permission is required to select video');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-        allowsEditing: true,
-        quality: 1,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        const willName = generateWillName();
-        const videoData = { ...asset, fileName: `${willName}.mp4` };
-        setSelectedVideo(videoData);
-        setUploadType('video');
-        setSelectedFile(null);
-        setSelectedAudio(null);
-        
-        // Automatically show preview
-        setPreviewSource({ type: 'video', uri: videoData.uri, name: videoData.fileName });
-        setShowPreviewModal(true);
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to pick video');
-    }
-  };
-
   const recordVideo = async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -937,32 +915,6 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
     } catch (error) {
       Alert.alert('Error', 'Failed to stop recording');
       console.error('Failed to stop recording', error);
-    }
-  };
-
-  const pickAudio = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'audio/*',
-        copyToCacheDirectory: true,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        const willName = generateWillName();
-        const extension = asset.name?.split('.').pop() || 'm4a';
-        const audioData = { ...asset, name: `${willName}.${extension}` };
-        setSelectedAudio(audioData);
-        setUploadType('audio');
-        setSelectedFile(null);
-        setSelectedVideo(null);
-        
-        // Automatically show preview
-        setPreviewSource({ type: 'audio', uri: audioData.uri, name: audioData.name });
-        setShowPreviewModal(true);
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to pick audio file');
     }
   };
 
@@ -1183,7 +1135,7 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Upload Will</Text>
+          <Text style={styles.headerTitle}>Draft Will</Text>
           <View style={{ width: 24 }} />
         </View>
 
@@ -1191,12 +1143,12 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.title}>How would you like to upload your will?</Text>
+          <Text style={styles.title}>How would you like to draft your will?</Text>
           <View style={styles.iconContainer}>
             <Ionicons name="document-text-outline" size={60} color={theme.colors.primary} />
           </View>
           <Text style={styles.subtitle}>
-            You can upload a document, record video or audio explaining your will
+            You can follow Guided Will, record video or audio explaining your will
           </Text>
 
           {existingWills.length > 0 && (
@@ -1208,35 +1160,24 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
             </View>
           )}
 
-          <TouchableOpacity style={[styles.optionButton, styles.aiOptionButton]} onPress={openAiAssistant}>
-            <View style={styles.aiBadge}>
-              <Ionicons name="sparkles-outline" size={18} color={theme.colors.buttonText} />
-              <Text style={styles.aiBadgeText}>Future Feature</Text>
-            </View>
-            <Ionicons name="chatbubbles-outline" size={40} color={theme.colors.primary} />
-            <Text style={styles.optionText}>Get Assisted by AI</Text>
-            <Text style={styles.optionSubtext}>
-              Guided editing experience that can read your uploaded will and help you refine it step by step.
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.optionButton} onPress={pickDocument}>
-            <Ionicons name="document-attach-outline" size={40} color={theme.colors.primary} />
-            <Text style={styles.optionText}>Upload Document</Text>
-            <Text style={styles.optionSubtext}>PDF, DOC, or DOCX file</Text>
-            {selectedFile && (
-              <Text style={styles.selectedFile}>{selectedFile.name}</Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.optionButton} onPress={pickVideo}>
-            <Ionicons name="videocam-outline" size={40} color={theme.colors.primary} />
-            <Text style={styles.optionText}>Choose Video</Text>
-            <Text style={styles.optionSubtext}>Select from gallery</Text>
-            {selectedVideo && (
-              <Text style={styles.selectedFile}>Video selected</Text>
-            )}
-          </TouchableOpacity>
+          <Animated.View
+            style={guidedFlowActive ? { transform: [{ scale: guidedWillPulseAnim }] } : undefined}
+          >
+            <TouchableOpacity
+              style={[styles.optionButton, styles.aiOptionButton]}
+              onPress={handleGuidedWill}
+            >
+              <View style={styles.aiBadge}>
+                <Ionicons name="sparkles-outline" size={18} color={theme.colors.buttonText} />
+                <Text style={styles.aiBadgeText}>Recommended</Text>
+              </View>
+              <Ionicons name="chatbubbles-outline" size={40} color={theme.colors.primary} />
+              <Text style={styles.optionText}>Guided Will</Text>
+              <Text style={styles.optionSubtext}>
+                Add your assets, create beneficiaries, and link them to the right items in an interactive flow.
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
 
           <TouchableOpacity style={styles.optionButton} onPress={recordVideo}>
             <Ionicons name="camera-outline" size={40} color={theme.colors.primary} />
@@ -1244,15 +1185,6 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
             <Text style={styles.optionSubtext}>Record a new video</Text>
             {selectedVideo && uploadType === 'video' && (
               <Text style={styles.selectedFile}>Video recorded</Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.optionButton} onPress={pickAudio}>
-            <Ionicons name="musical-notes-outline" size={40} color={theme.colors.primary} />
-            <Text style={styles.optionText}>Choose Audio</Text>
-            <Text style={styles.optionSubtext}>Select from files</Text>
-            {selectedAudio && uploadType === 'audio' && !isRecording && (
-              <Text style={styles.selectedFile}>Audio selected</Text>
             )}
           </TouchableOpacity>
 
@@ -1302,6 +1234,18 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
               </Text>
             </View>
           )}
+
+          <TouchableOpacity style={[styles.optionButton, styles.aiOptionButton]} onPress={openAiAssistant}>
+            <View style={styles.aiBadge}>
+              <Ionicons name="sparkles-outline" size={18} color={theme.colors.buttonText} />
+              <Text style={styles.aiBadgeText}>Future Feature</Text>
+            </View>
+            <Ionicons name="chatbubbles-outline" size={40} color={theme.colors.primary} />
+            <Text style={styles.optionText}>Get Assisted by AI</Text>
+            <Text style={styles.optionSubtext}>
+              Guided editing experience that can read your uploaded will and help you refine it step by step.
+            </Text>
+          </TouchableOpacity>
         </ScrollView>
 
         <View style={styles.footer}>
@@ -1434,6 +1378,33 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation }) => {
               </>
             )}
       </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showFirstTimeGuidedModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowFirstTimeGuidedModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Ionicons name="sparkles" size={32} color={theme.colors.primary} />
+            <Text style={styles.modalTitle}>Welcome to Guided Will</Text>
+            <Text style={styles.modalBody}>
+              Guided Will steps you through recording every asset and policy, then helps you link beneficiaries so nothing
+              is missed. We recommend starting here after registration.
+            </Text>
+            <Text style={styles.modalBody}>
+              You can still come back to record a video or audio message later. Tap Guided Will to begin setting up your estate.
+            </Text>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowFirstTimeGuidedModal(false)}
+            >
+              <Text style={styles.modalCloseText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
 
@@ -2205,6 +2176,45 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: theme.spacing.xl,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.spacing.xl,
+  },
+  modalContent: {
+    width: '100%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xxl,
+    padding: theme.spacing.xl,
+    gap: theme.spacing.md,
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: theme.typography.sizes.xl,
+    fontWeight: theme.typography.weights.bold as any,
+    color: theme.colors.text,
+    textAlign: 'center',
+  },
+  modalBody: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+  },
+  modalCloseButton: {
+    alignSelf: 'stretch',
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.buttonPrimary,
+    alignItems: 'center',
+  },
+  modalCloseText: {
+    color: theme.colors.buttonText,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
   },
   aiModalContainer: {
     width: '100%',

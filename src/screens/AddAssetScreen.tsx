@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,6 @@ import {
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
-  Linking,
   Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,22 +20,56 @@ import { useAuth } from '../contexts/AuthContext';
 import AssetService from '../services/assetService';
 import Toast from '../components/Toast';
 import { formatCurrencyInput, parseCurrency } from '../utils/currencyFormatter';
+import {
+  AssetType,
+  FinancingStatus,
+  FinanceProviderType,
+} from '../types/asset';
 
 const { width } = Dimensions.get('window');
 
 interface AddAssetScreenProps {
   navigation: any;
+  route?: any;
 }
 
-const assetTypes = [
+const assetTypes: AssetType[] = [
   'property',
   'vehicle',
+  'policy',
   'bank_account',
   'investment',
   'jewelry',
   'artwork',
   'business',
   'other',
+];
+
+const financingOptions: { key: FinancingStatus; label: string }[] = [
+  { key: 'financed', label: 'Financed' },
+  { key: 'owned', label: 'Owned outright' },
+];
+
+const financeProviderTypes: { key: Exclude<FinanceProviderType, 'owned'>; label: string }[] = [
+  { key: 'bank', label: 'Bank' },
+  { key: 'other', label: 'Other' },
+];
+
+const banksAndFintechs: string[] = [
+  'Absa',
+  'African Bank',
+  'Bidvest Bank',
+  'Capitec',
+  'Discovery Bank',
+  'FNB',
+  'Investec',
+  'Nedbank',
+  'Old Mutual',
+  'Standard Bank',
+  'TymeBank',
+  'RainFin',
+  'African Rainbow Capital',
+  'Other',
 ];
 
 const assetTypeDescriptions: Record<string, { title: string; subtitle: string }> = {
@@ -75,6 +108,11 @@ const assetTypeDescriptions: Record<string, { title: string; subtitle: string }>
     subtitle:
       'Outline the business entity, shareholding breakdown, and succession wishes. Consult legal counsel to ensure alignment with shareholder agreements and tax obligations.',
   },
+  policy: {
+    title: 'Policy Asset Guide',
+    subtitle:
+      'Policies are managed in their dedicated section. You will be redirected to capture policy numbers, insurers, and beneficiary notes so we can keep them in sync with your estate plan.',
+  },
   other: {
     title: 'Other Asset Guide',
     subtitle:
@@ -82,7 +120,58 @@ const assetTypeDescriptions: Record<string, { title: string; subtitle: string }>
   },
 };
 
-const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
+type AssetFormState = {
+  assetName: string;
+  assetType: AssetType | '';
+  otherAssetType: string;
+  assetDescription: string;
+  assetValue: string;
+  assetLocation: string;
+  financingStatus: FinancingStatus | '';
+  financeProviderType: Exclude<FinanceProviderType, 'owned'> | '';
+  financeProviderName: string;
+  financeProviderOther: string;
+  datePurchased: string;
+  repaymentTerm: string;
+  paidUpDate: string;
+};
+
+const formatDateInput = (value: string): string => {
+  const digitsOnly = value.replace(/[^\d]/g, '').slice(0, 8);
+  const parts = [];
+  if (digitsOnly.length >= 4) {
+    parts.push(digitsOnly.slice(0, 4));
+    if (digitsOnly.length >= 6) {
+      parts.push(digitsOnly.slice(4, 6));
+      const day = digitsOnly.slice(6);
+      if (day) {
+        parts.push(day);
+      }
+    } else {
+      parts.push(digitsOnly.slice(4));
+    }
+  } else {
+    parts.push(digitsOnly);
+  }
+  return parts.filter(Boolean).join('-');
+};
+
+const isValidDateString = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const [year, month, day] = value.split('-').map(Number);
+  if (month < 1 || month > 12) return false;
+  if (day < 1 || day > 31) return false;
+  if ([4, 6, 9, 11].includes(month) && day > 30) return false;
+  if (month === 2) {
+    const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    if (day > (isLeap ? 29 : 28)) return false;
+  }
+  return true;
+};
+
+const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) => {
   const { currentUser } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -93,28 +182,96 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
   const [toastType, setToastType] = useState<'error' | 'success' | 'info'>('error');
   const [infoModalVisible, setInfoModalVisible] = useState(false);
   const [infoModalContent, setInfoModalContent] = useState<{ title: string; subtitle: string } | null>(null);
+  const [showPolicyRedirectModal, setShowPolicyRedirectModal] = useState(false);
+  const [showFirstTimeModal, setShowFirstTimeModal] = useState(false);
+  const [showLinkExplainerModal, setShowLinkExplainerModal] = useState(false);
+  const [linkExplainerShown, setLinkExplainerShown] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<AssetFormState>({
     assetName: '',
     assetType: '',
+    otherAssetType: '',
     assetDescription: '',
     assetValue: '',
     assetLocation: '',
+    financingStatus: '',
+    financeProviderType: '',
+    financeProviderName: '',
+    financeProviderOther: '',
+    datePurchased: '',
+    repaymentTerm: '',
+    paidUpDate: '',
   });
 
   const totalSteps = 3;
+  const fromGuidedWill = route?.params?.fromGuidedWill ?? false;
 
-  const updateFormData = (field: string, value: string) => {
+  useEffect(() => {
+    if (route?.params?.showFirstTimeExplainer) {
+      setShowFirstTimeModal(true);
+    }
+  }, [route?.params?.showFirstTimeExplainer]);
+
+  const updateFormData = (field: keyof AssetFormState, value: string) => {
     if (field === 'assetValue') {
-      // Format currency as user types
       const formatted = formatCurrencyInput(value);
       setFormData(prev => ({ ...prev, [field]: formatted }));
+      return;
+    }
+    if (field === 'datePurchased' || field === 'paidUpDate') {
+      const formatted = formatDateInput(value);
+      setFormData(prev => ({ ...prev, [field]: formatted }));
+      return;
+    }
+    if (field === 'assetType') {
+      setFormData(prev => ({
+        ...prev,
+        assetType: value as AssetType | '',
+        otherAssetType: value === 'other' ? prev.otherAssetType : '',
+      }));
+      return;
+    }
+    if (field === 'financingStatus') {
+      setFormData(prev => ({
+        ...prev,
+        financingStatus: value as FinancingStatus | '',
+        financeProviderType: value === 'financed' ? prev.financeProviderType : '',
+        financeProviderName: value === 'financed' ? prev.financeProviderName : '',
+        financeProviderOther: value === 'financed' ? prev.financeProviderOther : '',
+        repaymentTerm: value === 'financed' ? prev.repaymentTerm : '',
+        paidUpDate: value === 'financed' ? prev.paidUpDate : '',
+      }));
+      return;
+    }
+    if (field === 'financeProviderType') {
+      setFormData(prev => ({
+        ...prev,
+        financeProviderType: value as Exclude<FinanceProviderType, 'owned'> | '',
+        financeProviderName: value === 'bank' ? prev.financeProviderName : '',
+        financeProviderOther: value === 'other' ? prev.financeProviderOther : '',
+      }));
+      return;
+    }
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleAssetTypePress = (type: string) => {
+    if (type === 'policy') {
+      setShowPolicyRedirectModal(true);
+      return;
+    }
+    updateFormData('assetType', type);
+  };
+
+  const handleLinkBeneficiaryRequest = () => {
+    if (fromGuidedWill && !linkExplainerShown) {
+      setShowLinkExplainerModal(true);
     } else {
-      setFormData(prev => ({ ...prev, [field]: value }));
+      handleSaveAsset('link');
     }
   };
 
-  const getAssetDisclaimer = (assetType: string): string => {
+  const getAssetDisclaimer = (): string => {
     return 'Read more about asset class, please consult an attorney for further information';
   };
 
@@ -142,6 +299,81 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
         }
         if (!formData.assetType) {
           setToastMessage('Please select an asset type');
+          setToastType('error');
+          setShowToast(true);
+          return;
+        }
+        if (formData.assetType === 'other' && !formData.otherAssetType.trim()) {
+          setToastMessage('Please specify your asset type');
+          setToastType('error');
+          setShowToast(true);
+          return;
+        }
+      } else if (currentStep === 1) {
+        if (!formData.assetValue.trim()) {
+          setToastMessage('Please enter an asset value');
+          setToastType('error');
+          setShowToast(true);
+          return;
+        }
+        if (!formData.assetLocation.trim()) {
+          setToastMessage('Please enter an asset location');
+          setToastType('error');
+          setShowToast(true);
+          return;
+        }
+        if (!formData.financingStatus) {
+          setToastMessage('Please select a financing status');
+          setToastType('error');
+          setShowToast(true);
+          return;
+        }
+        if (formData.financingStatus === 'financed') {
+          if (!formData.financeProviderType) {
+            setToastMessage('Please select a finance provider type');
+            setToastType('error');
+            setShowToast(true);
+            return;
+          }
+          if (formData.financeProviderType === 'bank' && !formData.financeProviderName) {
+            setToastMessage('Please choose a bank or fintech provider');
+            setToastType('error');
+            setShowToast(true);
+            return;
+          }
+          if (formData.financeProviderType === 'other' && !formData.financeProviderOther.trim()) {
+            setToastMessage('Please specify the finance provider');
+            setToastType('error');
+            setShowToast(true);
+            return;
+          }
+          if (!formData.repaymentTerm.trim()) {
+            setToastMessage('Please enter the repayment term');
+            setToastType('error');
+            setShowToast(true);
+            return;
+          }
+          if (!formData.paidUpDate.trim()) {
+            setToastMessage('Please enter the paid-up date');
+            setToastType('error');
+            setShowToast(true);
+            return;
+          }
+          if (!isValidDateString(formData.paidUpDate.trim())) {
+            setToastMessage('Paid-up date must be in YYYY-MM-DD format');
+            setToastType('error');
+            setShowToast(true);
+            return;
+          }
+        }
+        if (!formData.datePurchased.trim()) {
+          setToastMessage('Please enter the purchase date');
+          setToastType('error');
+          setShowToast(true);
+          return;
+        }
+        if (!isValidDateString(formData.datePurchased.trim())) {
+          setToastMessage('Purchase date must be in YYYY-MM-DD format');
           setToastType('error');
           setShowToast(true);
           return;
@@ -181,7 +413,7 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
     }
   };
 
-  const handleSaveAsset = async () => {
+  const handleSaveAsset = async (nextAction: 'back' | 'link' = 'back') => {
     if (!currentUser) {
       setToastMessage('You must be logged in to add an asset');
       setToastType('error');
@@ -192,13 +424,37 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
     try {
       setSaving(true);
 
+      const financingStatus = formData.financingStatus as FinancingStatus;
+      const financeProviderType: FinanceProviderType =
+        financingStatus === 'financed'
+          ? ((formData.financeProviderType as FinanceProviderType) || 'bank')
+          : 'owned';
+
       await AssetService.createAsset({
         user_id: currentUser.uid,
         asset_name: formData.assetName.trim(),
-        asset_type: formData.assetType as any,
+        asset_type:
+          formData.assetType === 'other'
+            ? formData.otherAssetType.trim()
+            : (formData.assetType as any),
         asset_description: formData.assetDescription.trim() || undefined,
-        asset_value: formData.assetValue ? parseCurrency(formData.assetValue) : undefined,
-        asset_location: formData.assetLocation.trim() || undefined,
+        asset_value: parseCurrency(formData.assetValue),
+        asset_location: formData.assetLocation.trim(),
+        financing_status: financingStatus,
+        finance_provider_type: financeProviderType,
+        finance_provider_name:
+          financingStatus === 'financed' && financeProviderType === 'bank'
+            ? formData.financeProviderName
+            : undefined,
+        finance_provider_other:
+          financingStatus === 'financed' && financeProviderType === 'other'
+            ? formData.financeProviderOther.trim()
+            : undefined,
+        date_purchased: formData.datePurchased.trim(),
+        repayment_term:
+          financingStatus === 'financed' ? formData.repaymentTerm.trim() : undefined,
+        paid_up_date:
+          financingStatus === 'financed' ? formData.paidUpDate.trim() : undefined,
         is_active: true,
       });
 
@@ -206,10 +462,16 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
       setToastType('success');
       setShowToast(true);
 
-      // Navigate back after a short delay
-      setTimeout(() => {
-        navigation.goBack();
-      }, 1500);
+      if (nextAction === 'link') {
+        navigation.navigate('AddBeneficiary', {
+          fromGuidedFlow: fromGuidedWill,
+          returnTo: fromGuidedWill ? 'Dashboard' : undefined,
+        });
+      } else {
+        setTimeout(() => {
+          navigation.goBack();
+        }, 1500);
+      }
     } catch (error: any) {
       setToastMessage(error.message || 'Failed to save asset');
       setToastType('error');
@@ -285,7 +547,7 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
                     styles.typeOption,
                     formData.assetType === type && styles.typeOptionActive,
                   ]}
-                  onPress={() => updateFormData('assetType', type)}
+                  onPress={() => handleAssetTypePress(type)}
                 >
                   <Text style={styles.typeText}>
                     {type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
@@ -294,10 +556,20 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
               ))}
             </ScrollView>
 
+            {formData.assetType === 'other' && (
+              <TextInput
+                style={styles.input}
+                placeholder="Specify asset type"
+                placeholderTextColor={theme.colors.placeholder}
+                value={formData.otherAssetType}
+                onChangeText={(value) => updateFormData('otherAssetType', value)}
+              />
+            )}
+
             {formData.assetType && (
               <TouchableOpacity style={styles.disclaimerBox} onPress={() => openAssetInfo(formData.assetType)}>
                 <Ionicons name="information-circle" size={20} color={theme.colors.info} />
-                <Text style={styles.disclaimerText}>{getAssetDisclaimer(formData.assetType)}</Text>
+                <Text style={styles.disclaimerText}>{getAssetDisclaimer()}</Text>
               </TouchableOpacity>
             )}
 
@@ -323,16 +595,117 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
 
             <TextInput
               style={styles.input}
-              placeholder="Asset Value (Optional)"
+              placeholder="Asset Value"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.assetValue}
               onChangeText={(value) => updateFormData('assetValue', value)}
               keyboardType="numeric"
             />
 
+            <Text style={styles.label}>Financing Status</Text>
+            <View style={styles.financingOptionsContainer}>
+              {financingOptions.map(option => (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[
+                    styles.financingOption,
+                    formData.financingStatus === option.key && styles.financingOptionActive,
+                  ]}
+                  onPress={() => updateFormData('financingStatus', option.key)}
+                >
+                  <Text
+                    style={[
+                      styles.financingOptionText,
+                      formData.financingStatus === option.key && styles.financingOptionTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {formData.financingStatus === 'financed' && (
+              <>
+                <Text style={styles.label}>Finance Provider</Text>
+                <View style={styles.financingOptionsContainer}>
+                  {financeProviderTypes.map(option => (
+                    <TouchableOpacity
+                      key={option.key}
+                      style={[
+                        styles.financingOption,
+                        formData.financeProviderType === option.key && styles.financingOptionActive,
+                      ]}
+                      onPress={() => updateFormData('financeProviderType', option.key)}
+                    >
+                      <Text
+                        style={[
+                          styles.financingOptionText,
+                          formData.financeProviderType === option.key && styles.financingOptionTextActive,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {formData.financeProviderType === 'bank' && (
+                  <ScrollView style={styles.typeContainer} nestedScrollEnabled>
+                    {banksAndFintechs.map(bank => (
+                      <TouchableOpacity
+                        key={bank}
+                        style={[
+                          styles.typeOption,
+                          formData.financeProviderName === bank && styles.typeOptionActive,
+                        ]}
+                        onPress={() => updateFormData('financeProviderName', bank)}
+                      >
+                        <Text style={styles.typeText}>{bank}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+
+                {formData.financeProviderType === 'other' && (
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter finance provider"
+                    placeholderTextColor={theme.colors.placeholder}
+                    value={formData.financeProviderOther}
+                    onChangeText={(value) => updateFormData('financeProviderOther', value)}
+                  />
+                )}
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Repayment Term (e.g. 60 months)"
+                  placeholderTextColor={theme.colors.placeholder}
+                  value={formData.repaymentTerm}
+                  onChangeText={(value) => updateFormData('repaymentTerm', value)}
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Paid-up Date (YYYY-MM-DD)"
+                  placeholderTextColor={theme.colors.placeholder}
+                  value={formData.paidUpDate}
+                  onChangeText={(value) => updateFormData('paidUpDate', value)}
+                />
+              </>
+            )}
+
             <TextInput
               style={styles.input}
-              placeholder="Location (Optional)"
+              placeholder="Date Purchased (YYYY-MM-DD)"
+              placeholderTextColor={theme.colors.placeholder}
+              value={formData.datePurchased}
+              onChangeText={(value) => updateFormData('datePurchased', value)}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Location"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.assetLocation}
               onChangeText={(value) => updateFormData('assetLocation', value)}
@@ -357,7 +730,9 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
               <View style={styles.reviewRow}>
                 <Text style={styles.reviewLabel}>Type:</Text>
                 <Text style={styles.reviewValue}>
-                  {formData.assetType.charAt(0).toUpperCase() + formData.assetType.slice(1).replace('_', ' ')}
+                  {formData.assetType === 'other'
+                    ? formData.otherAssetType
+                    : formData.assetType.charAt(0).toUpperCase() + formData.assetType.slice(1).replace('_', ' ')}
                 </Text>
               </View>
               {formData.assetDescription && (
@@ -378,6 +753,36 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
                   <Text style={styles.reviewValue}>{formData.assetLocation}</Text>
                 </View>
               )}
+              <View style={styles.reviewRow}>
+                <Text style={styles.reviewLabel}>Financing:</Text>
+                <Text style={styles.reviewValue}>
+                  {formData.financingStatus === 'financed' ? 'Financed' : 'Owned outright'}
+                </Text>
+              </View>
+              {formData.financingStatus === 'financed' && (
+                <>
+                  <View style={styles.reviewRow}>
+                    <Text style={styles.reviewLabel}>Provider:</Text>
+                    <Text style={styles.reviewValue}>
+                      {formData.financeProviderType === 'bank'
+                        ? formData.financeProviderName
+                        : formData.financeProviderOther}
+                    </Text>
+                  </View>
+                  <View style={styles.reviewRow}>
+                    <Text style={styles.reviewLabel}>Repayment Term:</Text>
+                    <Text style={styles.reviewValue}>{formData.repaymentTerm}</Text>
+                  </View>
+                  <View style={styles.reviewRow}>
+                    <Text style={styles.reviewLabel}>Paid-up Date:</Text>
+                    <Text style={styles.reviewValue}>{formData.paidUpDate}</Text>
+                  </View>
+                </>
+              )}
+              <View style={styles.reviewRow}>
+                <Text style={styles.reviewLabel}>Date Purchased:</Text>
+                <Text style={styles.reviewValue}>{formData.datePurchased}</Text>
+              </View>
             </View>
           </Animated.View>
         );
@@ -408,25 +813,51 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
           {renderStep()}
 
           <View style={styles.buttonContainer}>
-            {currentStep > 0 && (
-              <TouchableOpacity style={styles.backButton} onPress={previousStep}>
-                <Text style={styles.backButtonText}>Back</Text>
-              </TouchableOpacity>
-            )}
+            {currentStep === totalSteps - 1 ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.secondaryButton, saving && styles.secondaryButtonDisabled]}
+                  onPress={handleLinkBeneficiaryRequest}
+                  disabled={saving}
+                >
+                  <Text
+                    style={[
+                      styles.secondaryButtonText,
+                      saving && styles.secondaryButtonTextDisabled,
+                    ]}
+                  >
+                    Link Beneficiary
+                  </Text>
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.nextButton, currentStep === 0 && styles.nextButtonFull]}
-              onPress={nextStep}
-              disabled={saving}
-            >
-              {saving ? (
-                <ActivityIndicator color={theme.colors.buttonText} />
-              ) : (
-                <Text style={styles.nextButtonText}>
-                  {currentStep === totalSteps - 1 ? 'Save Asset' : 'Continue'}
-                </Text>
-              )}
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.nextButton}
+                  onPress={() => handleSaveAsset()}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <ActivityIndicator color={theme.colors.buttonText} />
+                  ) : (
+                    <Text style={styles.nextButtonText}>Save Asset</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.backButton} onPress={previousStep}>
+                  <Text style={styles.backButtonText}>Back</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
+                  <Text style={styles.nextButtonText}>Continue</Text>
+                </TouchableOpacity>
+                {currentStep > 0 && (
+                  <TouchableOpacity style={styles.backButton} onPress={previousStep}>
+                    <Text style={styles.backButtonText}>Back</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -453,6 +884,101 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation }) => {
             <Text style={styles.infoModalSubtitle}>{infoModalContent?.subtitle}</Text>
             <TouchableOpacity style={styles.infoModalButton} onPress={closeAssetInfo}>
               <Text style={styles.infoModalButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={showPolicyRedirectModal}
+        onRequestClose={() => setShowPolicyRedirectModal(false)}
+      >
+        <View style={styles.infoModalOverlay}>
+          <View style={styles.policyModalContainer}>
+            <Ionicons name="shield-outline" size={42} color={theme.colors.primary} />
+            <Text style={styles.policyModalTitle}>Manage Policies Separately</Text>
+            <Text style={styles.policyModalBody}>
+              Policies have their own guided flow so we can capture insurer details, policy numbers, and beneficiary links correctly.
+              We’ll take you to the policy page now. You can return to add more assets afterwards.
+            </Text>
+            <View style={styles.policyModalButtons}>
+              <TouchableOpacity
+                style={styles.policyModalPrimary}
+                onPress={() => {
+                  setShowPolicyRedirectModal(false);
+                  navigation.navigate('AddPolicy', {
+                    showFirstTimeExplainer: route?.params?.fromGuidedWill ?? false,
+                    fromGuidedWill: route?.params?.fromGuidedWill ?? false,
+                  });
+                }}
+              >
+                <Text style={styles.policyModalPrimaryText}>Go to Policy Page</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.policyModalSecondary}
+                onPress={() => setShowPolicyRedirectModal(false)}
+              >
+                <Text style={styles.policyModalSecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={showFirstTimeModal}
+        onRequestClose={() => setShowFirstTimeModal(false)}
+      >
+        <View style={styles.infoModalOverlay}>
+          <View style={styles.policyModalContainer}>
+            <Ionicons name="bulb-outline" size={42} color={theme.colors.primary} />
+            <Text style={styles.policyModalTitle}>Start with your assets</Text>
+            <Text style={styles.policyModalBody}>
+              Capture each asset’s value, location, and financing so we can keep your estate plan accurate. Once saved,
+              you’ll link beneficiaries right away.
+            </Text>
+            <TouchableOpacity
+              style={styles.policyModalPrimary}
+              onPress={() => setShowFirstTimeModal(false)}
+            >
+              <Text style={styles.policyModalPrimaryText}>Let’s do it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={showLinkExplainerModal}
+        onRequestClose={() => setShowLinkExplainerModal(false)}
+      >
+        <View style={styles.infoModalOverlay}>
+          <View style={styles.policyModalContainer}>
+            <Ionicons name="people-circle-outline" size={42} color={theme.colors.primary} />
+            <Text style={styles.policyModalTitle}>Link a beneficiary</Text>
+            <Text style={styles.policyModalBody}>
+              Linking now ensures this asset is assigned to the right person in your will. You can always edit it later.
+            </Text>
+            <TouchableOpacity
+              style={styles.policyModalPrimary}
+              onPress={() => {
+                setShowLinkExplainerModal(false);
+                setLinkExplainerShown(true);
+                handleSaveAsset('link');
+              }}
+            >
+              <Text style={styles.policyModalPrimaryText}>Continue to Link</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.policyModalSecondary}
+              onPress={() => setShowLinkExplainerModal(false)}
+            >
+              <Text style={styles.policyModalSecondaryText}>Not now</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -546,6 +1072,35 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.md,
     color: theme.colors.text,
   },
+  financingOptionsContainer: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.md,
+    flexWrap: 'wrap',
+  },
+  financingOption: {
+    flexGrow: 1,
+    minWidth: '45%',
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    alignItems: 'center',
+  },
+  financingOptionActive: {
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primaryLight + '20',
+  },
+  financingOptionText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
+    fontWeight: theme.typography.weights.medium as any,
+    textAlign: 'center',
+  },
+  financingOptionTextActive: {
+    color: theme.colors.primary,
+  },
   reviewContainer: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.xl,
@@ -567,13 +1122,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   buttonContainer: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     marginTop: theme.spacing.xl,
     gap: theme.spacing.md,
   },
   backButton: {
-    flex: 1,
-    height: 56,
+    width: '100%',
+    minHeight: 56,
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.xl,
     justifyContent: 'center',
@@ -587,20 +1142,40 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
   },
   nextButton: {
-    flex: 1,
-    height: 56,
+    width: '100%',
+    minHeight: 56,
     backgroundColor: theme.colors.buttonPrimary,
     borderRadius: theme.borderRadius.xl,
     justifyContent: 'center',
     alignItems: 'center',
   },
   nextButtonFull: {
-    flex: 2,
+    width: '100%',
   },
   nextButtonText: {
     fontSize: theme.typography.sizes.lg,
     fontWeight: theme.typography.weights.semibold as any,
     color: theme.colors.buttonText,
+  },
+  secondaryButton: {
+    width: '100%',
+    minHeight: 56,
+    borderRadius: theme.borderRadius.xl,
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  secondaryButtonDisabled: {
+    opacity: 0.5,
+  },
+  secondaryButtonText: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.primary,
+  },
+  secondaryButtonTextDisabled: {
+    color: theme.colors.textSecondary,
   },
   disclaimerBox: {
     flexDirection: 'row',
@@ -656,6 +1231,56 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.buttonPrimary,
   },
   infoModalButtonText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.buttonText,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  policyModalContainer: {
+    width: '100%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xxl,
+    padding: theme.spacing.xl,
+    alignItems: 'center',
+    gap: theme.spacing.md,
+  },
+  policyModalTitle: {
+    fontSize: theme.typography.sizes.xl,
+    fontWeight: theme.typography.weights.bold as any,
+    color: theme.colors.text,
+    textAlign: 'center',
+  },
+  policyModalBody: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+  },
+  policyModalButtons: {
+    width: '100%',
+    marginTop: theme.spacing.sm,
+    gap: theme.spacing.md,
+  },
+  policyModalSecondary: {
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+    alignSelf: 'stretch',
+  },
+  policyModalSecondaryText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.text,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  policyModalPrimary: {
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.buttonPrimary,
+    alignItems: 'center',
+    alignSelf: 'stretch',
+  },
+  policyModalPrimaryText: {
     fontSize: theme.typography.sizes.md,
     color: theme.colors.buttonText,
     fontWeight: theme.typography.weights.semibold as any,
