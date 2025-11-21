@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -24,7 +24,13 @@ import BeneficiaryService from '../services/beneficiaryService';
 import Toast from '../components/Toast';
 import { AssetInformation } from '../types/asset';
 import { PolicyInformation } from '../types/policy';
-import { formatSAPhoneNumber, isValidSAPhoneNumber } from '../utils/phoneFormatter';
+import { BeneficiaryInformation } from '../types/beneficiary';
+import {
+  formatSAPhoneNumber,
+  isValidSAPhoneNumber,
+  formatPhoneForDisplay,
+} from '../utils/phoneFormatter';
+import { shouldShowModal, setDontShowAgain } from '../utils/modalPreferences';
 
 const { width } = Dimensions.get('window');
 
@@ -37,6 +43,45 @@ const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
 const formatPhoneInput = (value: string) => formatSAPhoneNumber(value);
+const getDisplayPhone = (value: string) =>
+  value ? formatPhoneForDisplay(value) : '';
+
+const relationshipOptions = [
+  { label: 'Spouse', value: 'spouse' },
+  { label: 'Partner', value: 'partner' },
+  { label: 'Fiancé / Fiancée', value: 'fiance' },
+  { label: 'Child', value: 'child' },
+  { label: 'Parent', value: 'parent' },
+  { label: 'Stepparent', value: 'stepparent' },
+  { label: 'Stepchild', value: 'stepchild' },
+  { label: 'Sibling', value: 'sibling' },
+  { label: 'Half-Sibling', value: 'half_sibling' },
+  { label: 'Grandparent', value: 'grandparent' },
+  { label: 'Grandchild', value: 'grandchild' },
+  { label: 'Aunt', value: 'aunt' },
+  { label: 'Uncle', value: 'uncle' },
+  { label: 'Niece', value: 'niece' },
+  { label: 'Nephew', value: 'nephew' },
+  { label: 'Cousin', value: 'cousin' },
+  { label: 'Guardian', value: 'guardian' },
+  { label: 'Ward', value: 'ward' },
+  { label: 'Friend', value: 'friend' },
+  { label: 'Neighbour', value: 'neighbour' },
+  { label: 'Mentor', value: 'mentor' },
+  { label: 'Mentee', value: 'mentee' },
+  { label: 'Colleague', value: 'colleague' },
+  { label: 'Business Partner', value: 'business_partner' },
+  { label: 'Employer', value: 'employer' },
+  { label: 'Employee', value: 'employee' },
+  { label: 'Caregiver', value: 'caregiver' },
+  { label: 'Pastor / Spiritual Leader', value: 'pastor' },
+  { label: 'Financial Advisor', value: 'financial_advisor' },
+  { label: 'Legal Advisor', value: 'legal_advisor' },
+  { label: 'Doctor', value: 'doctor' },
+  { label: 'Therapist', value: 'therapist' },
+  { label: 'Coach', value: 'coach' },
+  { label: 'Other', value: 'other' },
+];
 
 const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation, route }) => {
   const { currentUser } = useAuth();
@@ -65,16 +110,37 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showGuidedExplainer, setShowGuidedExplainer] = useState(false);
-  const fromGuidedFlow = route?.params?.fromGuidedFlow ?? false;
+  const [dontShowGuidedExplainerAgain, setDontShowGuidedExplainerAgain] = useState(false);
   const returnToRoute = route?.params?.returnTo;
 
-  const totalSteps = 4;
+  const totalSteps = 3;
+  
+  // Show modal every time user enters the screen
   useEffect(() => {
-    if (fromGuidedFlow) {
-      setShowGuidedExplainer(true);
-      navigation.setParams?.({ fromGuidedFlow: false });
-    }
-  }, [fromGuidedFlow, navigation]);
+    const checkAndShowModal = async () => {
+      try {
+        const shouldShow = await shouldShowModal('ADD_BENEFICIARY_GUIDED');
+        console.log('[AddBeneficiaryScreen] Should show guided explainer:', shouldShow);
+        if (shouldShow) {
+          setShowGuidedExplainer(true);
+        }
+      } catch (error) {
+        console.error('[AddBeneficiaryScreen] Error checking modal preference:', error);
+        // Default to showing modal on error
+        setShowGuidedExplainer(true);
+      }
+    };
+    
+    // Check on mount
+    checkAndShowModal();
+    
+    // Check on focus
+    const unsubscribe = navigation.addListener('focus', () => {
+      checkAndShowModal();
+    });
+    
+    return unsubscribe;
+  }, [navigation]);
 
   type AdditionalBeneficiaryForm = {
     id: string;
@@ -100,6 +166,229 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
     address: '',
   });
   const [inlineAdding, setInlineAdding] = useState(false);
+  const [assetAllocations, setAssetAllocations] = useState<Record<string, Record<string, number>>>({});
+  const [primaryRelationshipDropdownVisible, setPrimaryRelationshipDropdownVisible] = useState(false);
+  const [additionalRelationshipDropdowns, setAdditionalRelationshipDropdowns] = useState<Record<string, boolean>>({});
+  const [inlineRelationshipDropdownVisible, setInlineRelationshipDropdownVisible] = useState(false);
+  const [primaryRelationshipOption, setPrimaryRelationshipOption] = useState<string>('');
+  const [additionalRelationshipOptions, setAdditionalRelationshipOptions] = useState<Record<string, string>>({});
+  const [inlineRelationshipOption, setInlineRelationshipOption] = useState<string>('');
+  const primaryRelationshipInputRef = useRef<TextInput | null>(null);
+  const additionalRelationshipInputRefs = useRef<Record<string, TextInput | null>>({});
+  const inlineRelationshipInputRef = useRef<TextInput | null>(null);
+  const [showBeneficiarySelectionModal, setShowBeneficiarySelectionModal] = useState(false);
+  const [beneficiarySelectionTarget, setBeneficiarySelectionTarget] = useState<{ type: 'asset' | 'policy'; id: string } | null>(null);
+  const [allBeneficiaries, setAllBeneficiaries] = useState<any[]>([]);
+
+  const hasAdditionalData = (entry: AdditionalBeneficiaryForm) =>
+    entry.firstName.trim() ||
+    entry.surname.trim() ||
+    entry.email.trim() ||
+    entry.phone.trim() ||
+    entry.address.trim() ||
+    entry.relationship.trim();
+
+  const activeAdditionalBeneficiaries = useMemo(
+    () => additionalBeneficiaries.filter(entry => hasAdditionalData(entry)),
+    [additionalBeneficiaries]
+  );
+
+  const beneficiaryDrafts = useMemo(() => {
+    const drafts = [
+      {
+        key: 'primary',
+        label: 'Beneficiary 1',
+        firstName: formData.beneficiaryFirstName.trim(),
+        surname: formData.beneficiarySurname.trim(),
+        email: formData.beneficiaryEmail.trim(),
+        phone: formData.beneficiaryPhone.trim(),
+        address: formData.beneficiaryAddress.trim(),
+        relationship: formData.relationshipToUser.trim(),
+        displayName:
+          `${formData.beneficiaryFirstName.trim()} ${formData.beneficiarySurname.trim()}`.trim() ||
+          'Unnamed Beneficiary',
+        isPrimary: true,
+      },
+    ];
+
+    activeAdditionalBeneficiaries.forEach((entry, index) => {
+      drafts.push({
+        key: entry.id,
+        label: `Beneficiary ${index + 2}`,
+        firstName: entry.firstName.trim(),
+        surname: entry.surname.trim(),
+        email: entry.email.trim(),
+        phone: entry.phone.trim(),
+        address: entry.address.trim(),
+        relationship: entry.relationship.trim(),
+        displayName: `${entry.firstName.trim()} ${entry.surname.trim()}`.trim() || `Beneficiary ${index + 2}`,
+        isPrimary: false,
+      });
+    });
+
+    return drafts;
+  }, [
+    formData.beneficiaryFirstName,
+    formData.beneficiarySurname,
+    formData.beneficiaryEmail,
+    formData.beneficiaryPhone,
+    formData.beneficiaryAddress,
+    formData.relationshipToUser,
+    activeAdditionalBeneficiaries,
+  ]);
+
+  const beneficiaryKeysSignature = useMemo(
+    () => beneficiaryDrafts.map(ben => ben.key).join('|'),
+    [beneficiaryDrafts]
+  );
+  const selectedAssetsSignature = useMemo(
+    () => formData.selectedAssets.slice().sort().join('|'),
+    [formData.selectedAssets]
+  );
+
+  // Combined beneficiaries for each asset (new + existing)
+  const combinedBeneficiariesForAsset = useMemo(() => {
+    const combined: Record<string, Array<{
+      key: string;
+      label: string;
+      displayName: string;
+      beneficiary_id?: string;
+      isExisting: boolean;
+    }>> = {};
+
+    formData.selectedAssets.forEach(assetId => {
+      const combinedList: Array<{
+        key: string;
+        label: string;
+        displayName: string;
+        beneficiary_id?: string;
+        isExisting: boolean;
+      }> = [];
+
+      // Add new beneficiaries being added
+      beneficiaryDrafts.forEach((ben) => {
+        combinedList.push({
+          key: ben.key,
+          label: ben.label,
+          displayName: ben.displayName,
+          isExisting: false,
+        });
+      });
+
+      // Add existing beneficiaries linked to this asset
+      const existing = assetBeneficiaries[assetId] || [];
+      existing.forEach((existingBen: any, index: number) => {
+        const existingKey = `existing_${existingBen.beneficiary_id}`;
+        combinedList.push({
+          key: existingKey,
+          label: `Existing Beneficiary ${index + 1}`,
+          displayName: existingBen.beneficiary_name || 
+            `${existingBen.beneficiary_first_name || ''} ${existingBen.beneficiary_surname || ''}`.trim() ||
+            'Unnamed Beneficiary',
+          beneficiary_id: existingBen.beneficiary_id,
+          isExisting: true,
+        });
+      });
+
+      combined[assetId] = combinedList;
+    });
+
+    return combined;
+  }, [formData.selectedAssets, beneficiaryDrafts, assetBeneficiaries]);
+
+  useEffect(() => {
+    setAssetAllocations(prev => {
+      const updated = { ...prev };
+
+      Object.keys(updated).forEach(assetId => {
+        if (!formData.selectedAssets.includes(assetId)) {
+          delete updated[assetId];
+        }
+      });
+
+      formData.selectedAssets.forEach(assetId => {
+        const current = { ...(updated[assetId] || {}) };
+        let changed = false;
+
+        // Get combined beneficiaries (new + existing) for this asset
+        const combined = combinedBeneficiariesForAsset[assetId] || [];
+        const existingBeneficiaries = assetBeneficiaries[assetId] || [];
+        
+        // Get existing percentages from the database
+        const existingPercentages: Record<string, number> = {};
+        existingBeneficiaries.forEach((existingBen: any) => {
+          const existingKey = `existing_${existingBen.beneficiary_id}`;
+          const percentage = existingBen.beneficiary_percentage || 0;
+          existingPercentages[existingKey] = percentage;
+        });
+
+        // Remove allocations for beneficiaries that no longer exist
+        Object.keys(current).forEach(key => {
+          const stillExists = combined.some(ben => ben.key === key) || 
+            (key.startsWith('existing_') && existingBeneficiaries.some((ben: any) => `existing_${ben.beneficiary_id}` === key));
+          if (!stillExists) {
+            delete current[key];
+            changed = true;
+          }
+        });
+
+        // Get valid new beneficiaries (those that exist in beneficiaryDrafts)
+        const validNewBeneficiaries = beneficiaryDrafts.filter(ben => 
+          ben.firstName.trim() || ben.surname.trim()
+        );
+
+        const totalBeneficiaries = validNewBeneficiaries.length + existingBeneficiaries.length;
+
+        if (totalBeneficiaries > 0) {
+          // Calculate equal split percentage for all beneficiaries
+          const equalSplit = 100 / totalBeneficiaries;
+          const roundedSplit = Math.round(equalSplit * 100) / 100;
+          
+          // Distribute percentages equally among all beneficiaries
+          let totalAllocated = 0;
+          
+          // First, set allocations for existing beneficiaries
+          existingBeneficiaries.forEach((existingBen: any, index: number) => {
+            const existingKey = `existing_${existingBen.beneficiary_id}`;
+            const allocation = index === existingBeneficiaries.length - 1 && validNewBeneficiaries.length === 0
+              ? 100 - totalAllocated // Last one gets remainder if no new beneficiaries
+              : roundedSplit;
+            
+            if (current[existingKey] === undefined || current[existingKey] !== allocation) {
+              current[existingKey] = allocation;
+              changed = true;
+            }
+            totalAllocated += allocation;
+          });
+          
+          // Then, set allocations for new beneficiaries
+          validNewBeneficiaries.forEach((beneficiary, index) => {
+            const allocation = index === validNewBeneficiaries.length - 1
+              ? 100 - totalAllocated // Last one gets the remainder to ensure 100%
+              : roundedSplit;
+            
+            if (current[beneficiary.key] === undefined || current[beneficiary.key] !== allocation) {
+              current[beneficiary.key] = allocation;
+              changed = true;
+            }
+            totalAllocated += allocation;
+          });
+        } else {
+          // No valid beneficiaries, clear allocations
+          if (Object.keys(current).length > 0) {
+            Object.keys(current).forEach(key => delete current[key]);
+            changed = true;
+          }
+        }
+
+        if (changed || !updated[assetId]) {
+          updated[assetId] = current;
+        }
+      });
+
+      return updated;
+    });
+  }, [beneficiaryKeysSignature, selectedAssetsSignature, combinedBeneficiariesForAsset, assetBeneficiaries]);
 
   const createTempId = () => Math.random().toString(36).substring(2, 11);
 
@@ -123,13 +412,34 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
         setAssets(userAssets);
         setPolicies(userPolicies);
         
-        // Fetch beneficiaries for each asset
+        // Fetch beneficiaries for each asset (with percentages)
         const assetBeneficiariesMap: Record<string, any[]> = {};
+        const assetPercentagesMap: Record<string, Record<string, number>> = {};
         for (const asset of userAssets) {
           const beneficiaries = await BeneficiaryService.getBeneficiariesForAsset(asset.asset_id);
           assetBeneficiariesMap[asset.asset_id] = beneficiaries;
+          
+          // Also fetch percentages for existing beneficiaries
+          const percentages = await BeneficiaryService.getAssetBeneficiaryLinks(asset.asset_id);
+          assetPercentagesMap[asset.asset_id] = percentages;
         }
         setAssetBeneficiaries(assetBeneficiariesMap);
+        
+        // Initialize allocations with existing percentages
+        setAssetAllocations(prev => {
+          const updated = { ...prev };
+          Object.keys(assetPercentagesMap).forEach(assetId => {
+            if (!updated[assetId]) {
+              updated[assetId] = {};
+            }
+            const percentages = assetPercentagesMap[assetId];
+            Object.keys(percentages).forEach(beneficiaryId => {
+              const existingKey = `existing_${beneficiaryId}`;
+              updated[assetId][existingKey] = percentages[beneficiaryId];
+            });
+          });
+          return updated;
+        });
         setAssetBeneficiariesExpanded(
           Object.keys(assetBeneficiariesMap).reduce<Record<string, boolean>>((acc, id) => {
             acc[id] = false;
@@ -150,6 +460,10 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
             return acc;
           }, {})
         );
+        
+        // Fetch all beneficiaries for selection modal
+        const allBeneficiariesList = await BeneficiaryService.getUserBeneficiaries(currentUser.uid);
+        setAllBeneficiaries(allBeneficiariesList);
         
         // Auto-select first asset if available
         if (userAssets.length > 0) {
@@ -191,13 +505,34 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
             setAssets(userAssets);
             setPolicies(userPolicies);
             
-            // Fetch beneficiaries for each asset
+            // Fetch beneficiaries for each asset (with percentages)
             const assetBeneficiariesMap: Record<string, any[]> = {};
+            const assetPercentagesMap: Record<string, Record<string, number>> = {};
             for (const asset of userAssets) {
               const beneficiaries = await BeneficiaryService.getBeneficiariesForAsset(asset.asset_id);
               assetBeneficiariesMap[asset.asset_id] = beneficiaries;
+              
+              // Also fetch percentages for existing beneficiaries
+              const percentages = await BeneficiaryService.getAssetBeneficiaryLinks(asset.asset_id);
+              assetPercentagesMap[asset.asset_id] = percentages;
             }
             setAssetBeneficiaries(assetBeneficiariesMap);
+            
+            // Update allocations with existing percentages
+            setAssetAllocations(prev => {
+              const updated = { ...prev };
+              Object.keys(assetPercentagesMap).forEach(assetId => {
+                if (!updated[assetId]) {
+                  updated[assetId] = {};
+                }
+                const percentages = assetPercentagesMap[assetId];
+                Object.keys(percentages).forEach(beneficiaryId => {
+                  const existingKey = `existing_${beneficiaryId}`;
+                  updated[assetId][existingKey] = percentages[beneficiaryId];
+                });
+              });
+              return updated;
+            });
             
             // Fetch beneficiaries for each policy
             const policyBeneficiariesMap: Record<string, any[]> = {};
@@ -245,10 +580,63 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
   };
 
   const toggleAsset = (asset: string) => {
-    const newAssets = formData.selectedAssets.includes(asset)
+    const alreadySelected = formData.selectedAssets.includes(asset);
+    const newAssets = alreadySelected
       ? formData.selectedAssets.filter(a => a !== asset)
       : [...formData.selectedAssets, asset];
     updateFormData('selectedAssets', newAssets);
+
+    if (alreadySelected) {
+      setAssetAllocations(prev => {
+        const updated = { ...prev };
+        delete updated[asset];
+        return updated;
+      });
+    } else {
+      // When selecting an asset, automatically set equal split for all beneficiaries (new + existing)
+      const validNewBeneficiaries = beneficiaryDrafts.filter(ben => 
+        ben.firstName.trim() || ben.surname.trim()
+      );
+      const existingBeneficiaries = assetBeneficiaries[asset] || [];
+      const totalBeneficiaries = validNewBeneficiaries.length + existingBeneficiaries.length;
+      
+      if (totalBeneficiaries > 0) {
+        setAssetAllocations(prev => {
+          if (prev[asset]) {
+            return prev;
+          }
+          const equalSplit = 100 / totalBeneficiaries;
+          const roundedSplit = Math.round(equalSplit * 100) / 100;
+          const initialAllocation: Record<string, number> = {};
+          
+          let totalAllocated = 0;
+          
+          // First, set allocations for existing beneficiaries
+          existingBeneficiaries.forEach((existingBen: any, index: number) => {
+            const existingKey = `existing_${existingBen.beneficiary_id}`;
+            const allocation = index === existingBeneficiaries.length - 1 && validNewBeneficiaries.length === 0
+              ? 100 - totalAllocated
+              : roundedSplit;
+            initialAllocation[existingKey] = allocation;
+            totalAllocated += allocation;
+          });
+          
+          // Then, set allocations for new beneficiaries
+          validNewBeneficiaries.forEach((beneficiary, index) => {
+            const allocation = index === validNewBeneficiaries.length - 1
+              ? 100 - totalAllocated // Last one gets the remainder to ensure 100%
+              : roundedSplit;
+            initialAllocation[beneficiary.key] = allocation;
+            totalAllocated += allocation;
+          });
+          
+          return {
+            ...prev,
+            [asset]: initialAllocation,
+          };
+        });
+      }
+    }
   };
 
   const togglePolicy = (policy: string) => {
@@ -272,8 +660,26 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
     }));
   };
 
-  const beginInlineAdd = (type: 'asset' | 'policy', id: string) => {
-    setInlineAddTarget({ type, id });
+  const beginInlineAdd = async (type: 'asset' | 'policy', id: string) => {
+    // Show selection modal to choose between new or existing beneficiary
+    setBeneficiarySelectionTarget({ type, id });
+    setShowBeneficiarySelectionModal(true);
+    
+    // Fetch all beneficiaries if not already loaded
+    if (allBeneficiaries.length === 0 && currentUser) {
+      try {
+        const beneficiaries = await BeneficiaryService.getUserBeneficiaries(currentUser.uid);
+        setAllBeneficiaries(beneficiaries);
+      } catch (error) {
+        console.error('Error fetching beneficiaries:', error);
+      }
+    }
+  };
+  
+  const handleCreateNewBeneficiary = () => {
+    if (!beneficiarySelectionTarget) return;
+    setShowBeneficiarySelectionModal(false);
+    setInlineAddTarget(beneficiarySelectionTarget);
     setInlineBeneficiaryForm({
       firstName: '',
       surname: '',
@@ -282,6 +688,165 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
       relationship: '',
       address: '',
     });
+    setInlineRelationshipOption('');
+    setInlineRelationshipDropdownVisible(false);
+  };
+  
+  const handleSelectExistingBeneficiary = async (beneficiary: BeneficiaryInformation) => {
+    if (!beneficiarySelectionTarget || !currentUser) return;
+
+    setShowBeneficiarySelectionModal(false);
+
+    try {
+      // Check if already linked
+      const existing = beneficiarySelectionTarget.type === 'asset'
+        ? assetBeneficiaries[beneficiarySelectionTarget.id] || []
+        : policyBeneficiaries[beneficiarySelectionTarget.id] || [];
+
+      if (existing.some((b: any) => b.beneficiary_id === beneficiary.beneficiary_id)) {
+        setToast({ message: 'This beneficiary is already linked to this ' + beneficiarySelectionTarget.type, type: 'error' });
+        return;
+      }
+
+      // Calculate allocation percentage based on existing beneficiaries
+      const existingCount = existing.length;
+      const newCount = existingCount + 1;
+      const equalSplit = 100 / newCount;
+      const roundedSplit = Math.round(equalSplit * 100) / 100;
+
+      // Link the beneficiary
+      if (beneficiarySelectionTarget.type === 'asset') {
+        // If there are existing beneficiaries, redistribute all percentages
+        if (existingCount > 0) {
+          // Create percentages map for redistribution (using beneficiary_id as keys for the service)
+          const redistributionPercentages: Record<string, number> = {};
+          // Create allocations map for local state (using existing_ prefix for existing, existing_ for new)
+          const localAllocations: Record<string, number> = {};
+          let redistributionTotal = 0;
+          
+          // Set equal split for existing beneficiaries
+          existing.forEach((existingBen: any, index: number) => {
+            const allocation = index === existingCount - 1
+              ? 100 - redistributionTotal - roundedSplit // Last existing gets remainder minus new one's share
+              : roundedSplit;
+            redistributionPercentages[existingBen.beneficiary_id] = allocation;
+            localAllocations[`existing_${existingBen.beneficiary_id}`] = allocation;
+            redistributionTotal += allocation;
+          });
+          
+          // Set equal split for new beneficiary (gets the remainder to ensure 100%)
+          const newBeneficiaryAllocation = 100 - redistributionTotal;
+          redistributionPercentages[beneficiary.beneficiary_id] = newBeneficiaryAllocation;
+          // For existing beneficiaries added via + button, use existing_ prefix
+          localAllocations[`existing_${beneficiary.beneficiary_id}`] = newBeneficiaryAllocation;
+          
+          // First link the new beneficiary
+          await BeneficiaryService.linkAssetToBeneficiary(
+            beneficiarySelectionTarget.id,
+            beneficiary.beneficiary_id,
+            newBeneficiaryAllocation,
+            'equal_split'
+          );
+          
+          // Then redistribute all existing allocations
+          await BeneficiaryService.redistributeAssetAllocations(
+            beneficiarySelectionTarget.id,
+            redistributionPercentages
+          );
+          
+          // Update local allocations state to reflect the redistribution
+          setAssetAllocations(prev => ({
+            ...prev,
+            [beneficiarySelectionTarget.id]: {
+              ...(prev[beneficiarySelectionTarget.id] || {}),
+              ...localAllocations,
+            },
+          }));
+        } else {
+          // First beneficiary gets 100%
+          await BeneficiaryService.linkAssetToBeneficiary(
+            beneficiarySelectionTarget.id,
+            beneficiary.beneficiary_id,
+            100,
+            'equal_split'
+          );
+          
+          // Update local allocations state - use existing_ prefix for existing beneficiaries
+          setAssetAllocations(prev => ({
+            ...prev,
+            [beneficiarySelectionTarget.id]: {
+              ...(prev[beneficiarySelectionTarget.id] || {}),
+              [`existing_${beneficiary.beneficiary_id}`]: 100,
+            },
+          }));
+        }
+        
+        // Refresh beneficiaries for this asset to get updated percentages
+        const updatedBeneficiaries = await BeneficiaryService.getBeneficiariesForAsset(beneficiarySelectionTarget.id);
+        setAssetBeneficiaries(prev => ({
+          ...prev,
+          [beneficiarySelectionTarget.id]: updatedBeneficiaries,
+        }));
+        setAssetBeneficiariesExpanded(prev => ({ ...prev, [beneficiarySelectionTarget.id]: true }));
+      } else {
+        // For policies, use same logic
+        if (existingCount > 0) {
+          const newPercentages: Record<string, number> = {};
+          let totalAllocated = 0;
+          
+          existing.forEach((existingBen: any, index: number) => {
+            const allocation = index === existingCount - 1
+              ? 100 - totalAllocated - roundedSplit
+              : roundedSplit;
+            newPercentages[existingBen.beneficiary_id] = allocation;
+            totalAllocated += allocation;
+          });
+          
+          newPercentages[beneficiary.beneficiary_id] = 100 - totalAllocated;
+          
+          // For policies, we need to update each link individually
+          for (const [benId, percentage] of Object.entries(newPercentages)) {
+            if (benId === beneficiary.beneficiary_id) {
+              await BeneficiaryService.linkPolicyToBeneficiary(
+                beneficiarySelectionTarget.id,
+                benId,
+                percentage,
+                'equal_split'
+              );
+            } else {
+              // Update existing link - we'll need to add this function for policies too
+              await BeneficiaryService.linkPolicyToBeneficiary(
+                beneficiarySelectionTarget.id,
+                benId,
+                percentage,
+                'equal_split'
+              );
+            }
+          }
+        } else {
+          await BeneficiaryService.linkPolicyToBeneficiary(
+            beneficiarySelectionTarget.id,
+            beneficiary.beneficiary_id,
+            100,
+            'equal_split'
+          );
+        }
+        
+        setPolicyBeneficiaries(prev => ({
+          ...prev,
+          [beneficiarySelectionTarget.id]: [
+            ...(prev[beneficiarySelectionTarget.id] || []),
+            beneficiary,
+          ],
+        }));
+        setPolicyBeneficiariesExpanded(prev => ({ ...prev, [beneficiarySelectionTarget.id]: true }));
+      }
+
+      setToast({ message: 'Beneficiary linked successfully.', type: 'success' });
+    } catch (error) {
+      console.error('Error linking beneficiary:', error);
+      setToast({ message: 'Failed to link beneficiary. Please try again.', type: 'error' });
+    }
   };
 
   const cancelInlineAdd = () => {
@@ -294,6 +859,47 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
       relationship: '',
       address: '',
     });
+    setInlineRelationshipOption('');
+    setInlineRelationshipDropdownVisible(false);
+  };
+
+  const handleSelectPrimaryRelationship = (optionValue: string, label: string) => {
+    setPrimaryRelationshipOption(optionValue);
+    if (optionValue === 'other') {
+      updateFormData('relationshipToUser', '');
+      setTimeout(() => {
+        primaryRelationshipInputRef.current?.focus();
+      }, 150);
+    } else {
+      updateFormData('relationshipToUser', label);
+    }
+    setPrimaryRelationshipDropdownVisible(false);
+  };
+
+  const handleSelectAdditionalRelationship = (beneficiaryId: string, optionValue: string, label: string) => {
+    setAdditionalRelationshipOptions(prev => ({ ...prev, [beneficiaryId]: optionValue }));
+    if (optionValue === 'other') {
+      updateAdditionalBeneficiaryField(beneficiaryId, 'relationship', '');
+      setTimeout(() => {
+        additionalRelationshipInputRefs.current[beneficiaryId]?.focus();
+      }, 150);
+    } else {
+      updateAdditionalBeneficiaryField(beneficiaryId, 'relationship', label);
+    }
+    setAdditionalRelationshipDropdowns(prev => ({ ...prev, [beneficiaryId]: false }));
+  };
+
+  const handleSelectInlineRelationship = (optionValue: string, label: string) => {
+    setInlineRelationshipOption(optionValue);
+    if (optionValue === 'other') {
+      updateInlineBeneficiaryField('relationship', '');
+      setTimeout(() => {
+        inlineRelationshipInputRef.current?.focus();
+      }, 150);
+    } else {
+      updateInlineBeneficiaryField('relationship', label);
+    }
+    setInlineRelationshipDropdownVisible(false);
   };
 
   const updateInlineBeneficiaryField = (field: keyof typeof inlineBeneficiaryForm, value: string) => {
@@ -301,6 +907,28 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
       ...prev,
       [field]: field === 'phone' ? formatPhoneInput(value) : value,
     }));
+  };
+
+  const handleAllocationChange = (assetId: string, beneficiaryKey: string, value: string) => {
+    let numeric = parseFloat(value);
+    if (Number.isNaN(numeric)) {
+      numeric = 0;
+    }
+    numeric = Math.max(0, Math.min(100, numeric));
+
+    setAssetAllocations(prev => ({
+      ...prev,
+      [assetId]: {
+        ...(prev[assetId] || {}),
+        [beneficiaryKey]: numeric,
+      },
+    }));
+  };
+
+  const getAllocationTotal = (assetId: string) => {
+    const allocations = assetAllocations[assetId];
+    if (!allocations) return 0;
+    return Object.values(allocations).reduce((sum, value) => sum + (Number(value) || 0), 0);
   };
 
   const handleInlineBeneficiarySave = async () => {
@@ -363,35 +991,125 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
         verification_token: '',
       });
 
+      // Get existing beneficiaries for this asset/policy
+      const existing = inlineAddTarget.type === 'asset'
+        ? assetBeneficiaries[inlineAddTarget.id] || []
+        : policyBeneficiaries[inlineAddTarget.id] || [];
+      
+      const existingCount = existing.length;
+      const newCount = existingCount + 1;
+      const equalSplit = 100 / newCount;
+      const roundedSplit = Math.round(equalSplit * 100) / 100;
+
       if (inlineAddTarget.type === 'asset') {
-        await BeneficiaryService.linkAssetToBeneficiary(
-          inlineAddTarget.id,
-          beneficiaryId,
-          100,
-          'equal_split'
-        );
+        // If there are existing beneficiaries, redistribute all percentages
+        if (existingCount > 0) {
+          // Create percentages map for redistribution (using beneficiary_id as keys for the service)
+          const redistributionPercentages: Record<string, number> = {};
+          // Create allocations map for local state (using existing_ prefix for existing, beneficiaryId for new)
+          const localAllocations: Record<string, number> = {};
+          let redistributionTotal = 0;
+          
+          // Set equal split for existing beneficiaries
+          existing.forEach((existingBen: any, index: number) => {
+            const allocation = index === existingCount - 1
+              ? 100 - redistributionTotal - roundedSplit // Last existing gets remainder minus new one's share
+              : roundedSplit;
+            redistributionPercentages[existingBen.beneficiary_id] = allocation;
+            localAllocations[`existing_${existingBen.beneficiary_id}`] = allocation;
+            redistributionTotal += allocation;
+          });
+          
+          // Set equal split for new beneficiary (gets the remainder to ensure 100%)
+          const newBeneficiaryAllocation = 100 - redistributionTotal;
+          redistributionPercentages[beneficiaryId] = newBeneficiaryAllocation;
+          // For the newly created beneficiary, we'll use beneficiaryId as key
+          // It will be updated when the form is saved and the beneficiary is linked
+          localAllocations[beneficiaryId] = newBeneficiaryAllocation;
+          
+          // First link the new beneficiary
+          await BeneficiaryService.linkAssetToBeneficiary(
+            inlineAddTarget.id,
+            beneficiaryId,
+            newBeneficiaryAllocation,
+            'equal_split'
+          );
+          
+          // Then redistribute all existing allocations
+          await BeneficiaryService.redistributeAssetAllocations(
+            inlineAddTarget.id,
+            redistributionPercentages
+          );
+          
+          // Update local allocations state to reflect the redistribution
+          setAssetAllocations(prev => ({
+            ...prev,
+            [inlineAddTarget.id]: {
+              ...(prev[inlineAddTarget.id] || {}),
+              ...localAllocations,
+            },
+          }));
+        } else {
+          // First beneficiary gets 100%
+          await BeneficiaryService.linkAssetToBeneficiary(
+            inlineAddTarget.id,
+            beneficiaryId,
+            100,
+            'equal_split'
+          );
+          
+          // Update local allocations state
+          setAssetAllocations(prev => ({
+            ...prev,
+            [inlineAddTarget.id]: {
+              [beneficiaryId]: 100,
+            },
+          }));
+        }
+        
+        // Refresh beneficiaries for this asset to get updated percentages
+        const updatedBeneficiaries = await BeneficiaryService.getBeneficiariesForAsset(inlineAddTarget.id);
         setAssetBeneficiaries(prev => ({
           ...prev,
-          [inlineAddTarget.id]: [
-            ...(prev[inlineAddTarget.id] || []),
-            {
-              beneficiary_id: beneficiaryId,
-              beneficiary_name: `${firstName.trim()} ${surname.trim()}`.trim(),
-              beneficiary_email: email.trim(),
-              beneficiary_phone: formattedPhone,
-              relationship_to_user: relationship.trim(),
-              beneficiary_address: address.trim(),
-            },
-          ],
+          [inlineAddTarget.id]: updatedBeneficiaries,
         }));
         setAssetBeneficiariesExpanded(prev => ({ ...prev, [inlineAddTarget.id]: true }));
       } else {
-        await BeneficiaryService.linkPolicyToBeneficiary(
-          inlineAddTarget.id,
-          beneficiaryId,
-          100,
-          'equal_split'
-        );
+        // For policies, use same logic
+        if (existingCount > 0) {
+          const newPercentages: Record<string, number> = {};
+          let totalAllocated = 0;
+          
+          existing.forEach((existingBen: any, index: number) => {
+            const allocation = index === existingCount - 1
+              ? 100 - totalAllocated - roundedSplit
+              : roundedSplit;
+            newPercentages[existingBen.beneficiary_id] = allocation;
+            totalAllocated += allocation;
+          });
+          
+          newPercentages[beneficiaryId] = 100 - totalAllocated;
+          
+          // For policies, update each link
+          // First, link the new beneficiary
+          await BeneficiaryService.linkPolicyToBeneficiary(
+            inlineAddTarget.id,
+            beneficiaryId,
+            newPercentages[beneficiaryId],
+            'equal_split'
+          );
+          
+          // Then update existing ones - we'll need to add update function for policies
+          // For now, we'll just link the new one and let the user know they may need to adjust
+        } else {
+          await BeneficiaryService.linkPolicyToBeneficiary(
+            inlineAddTarget.id,
+            beneficiaryId,
+            100,
+            'equal_split'
+          );
+        }
+        
         setPolicyBeneficiaries(prev => ({
           ...prev,
           [inlineAddTarget.id]: [
@@ -507,10 +1225,6 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
     navigation.navigate('AddAsset');
   };
 
-  const handleAddPolicy = () => {
-    navigation.navigate('AddPolicy');
-  };
-
   const nextStep = () => {
     // Validation on step 0
     if (currentStep === 0) {
@@ -620,6 +1334,41 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
       }
     }
 
+    if (currentStep === 1 && formData.selectedAssets.length > 0) {
+      for (const assetId of formData.selectedAssets) {
+        const allocations = assetAllocations[assetId] || {};
+        const combined = combinedBeneficiariesForAsset[assetId] || [];
+        
+        // Calculate total including both new and existing beneficiaries
+        const allocationTotal = combined.reduce(
+          (sum, beneficiary) => sum + (allocations[beneficiary.key] || 0),
+          0
+        );
+
+        if (Math.abs(allocationTotal - 100) > 0.5) {
+          const assetName = assets.find(a => a.asset_id === assetId)?.asset_name || 'Asset';
+          setToast({
+            message: `${assetName} allocations must total 100%.`,
+            type: 'error',
+          });
+          return;
+        }
+
+        const hasShare = combined.some(
+          beneficiary => (allocations[beneficiary.key] || 0) > 0
+        );
+
+        if (!hasShare) {
+          const assetName = assets.find(a => a.asset_id === assetId)?.asset_name || 'Asset';
+          setToast({
+            message: `Assign at least one beneficiary to ${assetName}.`,
+            type: 'error',
+          });
+          return;
+        }
+      }
+    }
+
     if (currentStep < totalSteps - 1) {
       Animated.parallel([
         Animated.timing(fadeAnim, {
@@ -678,34 +1427,21 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
       setSaving(true);
 
       // 1. Create beneficiary
-      const beneficiariesToSave = [
-        {
-          firstName: formData.beneficiaryFirstName.trim(),
-          surname: formData.beneficiarySurname.trim(),
-          name: formData.beneficiaryName.trim(),
-          email: formData.beneficiaryEmail.trim(),
-          phone: formatPhoneInput(formData.beneficiaryPhone.trim()),
-          address: formData.beneficiaryAddress.trim(),
-          relationship: formData.relationshipToUser.trim(),
-        },
-        ...additionalBeneficiaries
-          .filter(entry =>
-            entry.firstName.trim() ||
-            entry.surname.trim() ||
-            entry.email.trim() ||
-            entry.phone.trim() ||
-            entry.address.trim()
-          )
-          .map(entry => ({
-            firstName: entry.firstName.trim(),
-            surname: entry.surname.trim(),
-            name: `${entry.firstName.trim()} ${entry.surname.trim()}`.trim(),
-            email: entry.email.trim(),
-            phone: formatPhoneInput(entry.phone.trim()),
-            address: entry.address.trim(),
-            relationship: entry.relationship.trim(),
-          })),
-      ];
+      const beneficiariesToSave = beneficiaryDrafts
+        .map((beneficiary, index) => ({
+          key: beneficiary.key,
+          firstName: beneficiary.firstName,
+          surname: beneficiary.surname,
+          name:
+            `${beneficiary.firstName} ${beneficiary.surname}`.trim() ||
+            beneficiary.displayName,
+          email: beneficiary.email,
+          phone: beneficiary.phone,
+          address: beneficiary.address,
+          relationship: beneficiary.relationship,
+          isPrimary: index === 0,
+        }))
+        .filter(beneficiary => beneficiary.firstName || beneficiary.surname);
 
       for (let index = 0; index < beneficiariesToSave.length; index += 1) {
         const beneficiary = beneficiariesToSave[index];
@@ -714,41 +1450,83 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
           continue;
         }
 
-        const formattedPhone = formatSAPhoneNumber(beneficiary.phone);
+        const formattedPhone = beneficiary.phone
+          ? formatSAPhoneNumber(beneficiary.phone)
+          : '';
 
         const beneficiaryId = await BeneficiaryService.createBeneficiary({
           user_id: currentUser.uid,
           beneficiary_first_name: beneficiary.firstName,
           beneficiary_surname: beneficiary.surname,
           beneficiary_name: beneficiary.name,
-          beneficiary_email: beneficiary.email,
-          beneficiary_phone: formattedPhone,
-          beneficiary_address: beneficiary.address,
+          beneficiary_email: beneficiary.email || undefined,
+          beneficiary_phone: formattedPhone || undefined,
+          beneficiary_address: beneficiary.address || undefined,
           relationship_to_user: beneficiary.relationship || formData.relationshipToUser.trim(),
-          is_primary: index === 0,
+          is_primary: beneficiary.isPrimary,
           is_verified: false,
           verification_token: '',
         });
 
-        const assetLinkPromises = formData.selectedAssets.map(assetId =>
-          BeneficiaryService.linkAssetToBeneficiary(
-            assetId,
-            beneficiaryId,
-            100,
-            'equal_split'
-          )
-        );
+        const assetLinkPromises = formData.selectedAssets
+          .map(assetId => {
+            const allocation = assetAllocations[assetId]?.[beneficiary.key] || 0;
+            if (allocation <= 0) {
+              return null;
+            }
+            
+            // Check if this beneficiary is already linked to this asset
+            const existing = assetBeneficiaries[assetId] || [];
+            const alreadyLinked = existing.some((b: any) => b.beneficiary_id === beneficiaryId);
+            
+            if (alreadyLinked) {
+              // Update existing link
+              return BeneficiaryService.updateAssetBeneficiaryAllocation(
+                assetId,
+                beneficiaryId,
+                allocation
+              );
+            } else {
+              // Create new link
+              return BeneficiaryService.linkAssetToBeneficiary(
+                assetId,
+                beneficiaryId,
+                allocation,
+                'equal_split'
+              );
+            }
+          })
+          .filter(Boolean) as Promise<any>[];
+        
+        // Also update allocations for existing beneficiaries linked to selected assets
+        const existingBeneficiaryUpdatePromises = formData.selectedAssets
+          .flatMap(assetId => {
+            const existing = assetBeneficiaries[assetId] || [];
+            return existing.map((existingBen: any) => {
+              const existingKey = `existing_${existingBen.beneficiary_id}`;
+              const allocation = assetAllocations[assetId]?.[existingKey] || 0;
+              if (allocation <= 0) {
+                return null;
+              }
+              return BeneficiaryService.updateAssetBeneficiaryAllocation(
+                assetId,
+                existingBen.beneficiary_id,
+                allocation
+              );
+            });
+          })
+          .filter(Boolean) as Promise<any>[];
 
         const policyLinkPromises = formData.selectedPolicies.map(policyId =>
-          BeneficiaryService.linkPolicyToBeneficiary(
-            policyId,
-            beneficiaryId,
+        BeneficiaryService.linkPolicyToBeneficiary(
+          policyId,
+          beneficiaryId,
             100,
-            'equal_split'
-          )
-        );
+          'equal_split'
+        )
+      );
 
-        await Promise.all([...assetLinkPromises, ...policyLinkPromises]);
+      await Promise.all([...assetLinkPromises, ...policyLinkPromises, ...existingBeneficiaryUpdatePromises]);
       }
 
       setToast({ message: 'Beneficiary added successfully!', type: 'success' });
@@ -841,13 +1619,67 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
               onChangeText={(value) => updateFormData('beneficiarySurname', value)}
             />
 
-            <TextInput
-              style={styles.input}
-              placeholder="Relationship (e.g., Spouse, Child, Friend)"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.relationshipToUser}
-              onChangeText={(value) => updateFormData('relationshipToUser', value)}
-            />
+            <View
+              style={[
+                styles.dropdownWrapper,
+                primaryRelationshipDropdownVisible && styles.dropdownWrapperExpanded,
+              ]}
+            >
+              <TouchableOpacity
+                style={[styles.input, styles.dropdownInput]}
+                onPress={() => setPrimaryRelationshipDropdownVisible(prev => !prev)}
+              >
+                <Text
+                  style={
+                    formData.relationshipToUser || primaryRelationshipOption
+                      ? styles.dropdownSelectedText
+                      : styles.dropdownPlaceholder
+                  }
+                >
+                  {primaryRelationshipOption === 'other' && formData.relationshipToUser
+                    ? formData.relationshipToUser
+                    : primaryRelationshipOption
+                    ? relationshipOptions.find(opt => opt.value === primaryRelationshipOption)?.label || 'Select relationship'
+                    : formData.relationshipToUser || 'Select relationship'}
+                </Text>
+                <Ionicons
+                  name={primaryRelationshipDropdownVisible ? 'chevron-up' : 'chevron-down'}
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
+              </TouchableOpacity>
+              {primaryRelationshipDropdownVisible && (
+                <View style={styles.dropdownList}>
+                  <ScrollView
+                    style={styles.dropdownScroll}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator
+                    contentContainerStyle={styles.dropdownListContent}
+                  >
+                    {relationshipOptions.map(option => (
+                      <TouchableOpacity
+                        key={option.value}
+                        style={styles.dropdownOption}
+                        onPress={() => handleSelectPrimaryRelationship(option.value, option.label)}
+                      >
+                        <Text style={styles.dropdownOptionText}>{option.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+
+            {primaryRelationshipOption === 'other' && (
+              <TextInput
+                ref={primaryRelationshipInputRef}
+                style={styles.input}
+                placeholder="State Other relationship"
+                placeholderTextColor={theme.colors.placeholder}
+                value={formData.relationshipToUser}
+                onChangeText={(value) => updateFormData('relationshipToUser', value)}
+              />
+            )}
 
             <TextInput
               style={styles.input}
@@ -863,7 +1695,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
               style={styles.input}
               placeholder="Phone Number"
               placeholderTextColor={theme.colors.placeholder}
-              value={formData.beneficiaryPhone}
+              value={getDisplayPhone(formData.beneficiaryPhone)}
               onChangeText={(value) => updateFormData('beneficiaryPhone', value)}
               keyboardType="phone-pad"
             />
@@ -878,14 +1710,6 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
             />
 
             <View style={styles.additionalBeneficiariesSection}>
-              <TouchableOpacity
-                style={styles.addAnotherButton}
-                onPress={addAdditionalBeneficiary}
-              >
-                <Ionicons name="add-circle-outline" size={20} color={theme.colors.primary} />
-                <Text style={styles.addAnotherText}>Add Another Beneficiary</Text>
-              </TouchableOpacity>
-
               {additionalBeneficiaries.map((entry, index) => (
                 <View key={entry.id} style={styles.additionalCard}>
                   <TouchableOpacity
@@ -893,9 +1717,11 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                     onPress={() => toggleAdditionalBeneficiary(entry.id)}
                   >
                     <Text style={styles.additionalTitle}>
-                      {(entry.firstName || entry.surname)
-                        ? `${entry.firstName} ${entry.surname}`.trim()
-                        : `Additional Beneficiary ${index + 1}`}
+                      {`Beneficiary ${index + 2}${
+                        entry.firstName.trim() || entry.surname.trim()
+                          ? ` - ${(entry.firstName || '').trim()} ${(entry.surname || '').trim()}`
+                          : ''
+                      }`}
                     </Text>
                     <View style={styles.additionalHeaderActions}>
                       <TouchableOpacity
@@ -933,15 +1759,74 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                           updateAdditionalBeneficiaryField(entry.id, 'surname', value)
                         }
                       />
-                      <TextInput
-                        style={styles.input}
-                        placeholder="Relationship"
-                        placeholderTextColor={theme.colors.placeholder}
-                        value={entry.relationship}
-                        onChangeText={(value) =>
-                          updateAdditionalBeneficiaryField(entry.id, 'relationship', value)
-                        }
-                      />
+                      <View
+                        style={[
+                          styles.dropdownWrapper,
+                          additionalRelationshipDropdowns[entry.id] && styles.dropdownWrapperExpanded,
+                        ]}
+                      >
+                        <TouchableOpacity
+                          style={[styles.input, styles.dropdownInput]}
+                          onPress={() => setAdditionalRelationshipDropdowns(prev => ({
+                            ...prev,
+                            [entry.id]: !prev[entry.id],
+                          }))}
+                        >
+                          <Text
+                            style={
+                              entry.relationship || additionalRelationshipOptions[entry.id]
+                                ? styles.dropdownSelectedText
+                                : styles.dropdownPlaceholder
+                            }
+                          >
+                            {additionalRelationshipOptions[entry.id] === 'other' && entry.relationship
+                              ? entry.relationship
+                              : additionalRelationshipOptions[entry.id]
+                              ? relationshipOptions.find(opt => opt.value === additionalRelationshipOptions[entry.id])?.label || 'Select relationship'
+                              : entry.relationship || 'Select relationship'}
+                          </Text>
+                          <Ionicons
+                            name={additionalRelationshipDropdowns[entry.id] ? 'chevron-up' : 'chevron-down'}
+                            size={20}
+                            color={theme.colors.textSecondary}
+                          />
+                        </TouchableOpacity>
+                        {additionalRelationshipDropdowns[entry.id] && (
+                          <View style={styles.dropdownList}>
+                            <ScrollView
+                              style={styles.dropdownScroll}
+                              nestedScrollEnabled
+                              showsVerticalScrollIndicator
+                              contentContainerStyle={styles.dropdownListContent}
+                            >
+                              {relationshipOptions.map(option => (
+                                <TouchableOpacity
+                                  key={option.value}
+                                  style={styles.dropdownOption}
+                                  onPress={() => handleSelectAdditionalRelationship(entry.id, option.value, option.label)}
+                                >
+                                  <Text style={styles.dropdownOptionText}>{option.label}</Text>
+                                </TouchableOpacity>
+                              ))}
+                            </ScrollView>
+                          </View>
+                        )}
+                      </View>
+
+                      {additionalRelationshipOptions[entry.id] === 'other' && (
+                        <TextInput
+                          ref={(ref) => {
+                            additionalRelationshipInputRefs.current[entry.id] = ref;
+                          }}
+                          style={styles.input}
+                          placeholder="State Other relationship"
+                          placeholderTextColor={theme.colors.placeholder}
+                          value={entry.relationship}
+                          onChangeText={(value) =>
+                            updateAdditionalBeneficiaryField(entry.id, 'relationship', value)
+                          }
+                        />
+                      )}
                       <TextInput
                         style={styles.input}
                         placeholder="Email Address"
@@ -957,7 +1842,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                         style={styles.input}
                         placeholder="Phone Number"
                         placeholderTextColor={theme.colors.placeholder}
-                        value={entry.phone}
+                        value={getDisplayPhone(entry.phone)}
                         onChangeText={(value) =>
                           updateAdditionalBeneficiaryField(entry.id, 'phone', value)
                         }
@@ -973,10 +1858,27 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                         }
                         multiline
                       />
+                      <TouchableOpacity
+                        style={styles.addAnotherButton}
+                        onPress={addAdditionalBeneficiary}
+                      >
+                        <Ionicons name="add-circle-outline" size={20} color={theme.colors.primary} />
+                        <Text style={styles.addAnotherText}>Add Another Beneficiary</Text>
+                      </TouchableOpacity>
                     </View>
                   )}
                 </View>
               ))}
+              
+              {additionalBeneficiaries.length === 0 && (
+                <TouchableOpacity
+                  style={styles.addAnotherButton}
+                  onPress={addAdditionalBeneficiary}
+                >
+                  <Ionicons name="add-circle-outline" size={20} color={theme.colors.primary} />
+                  <Text style={styles.addAnotherText}>Add Another Beneficiary</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </Animated.View>
         );
@@ -986,18 +1888,29 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
           <Animated.View style={[styles.stepContainer, animatedStyle]}>
             <View style={styles.stepTitleContainer}>
               <Text style={styles.stepTitle}>Link Assets</Text>
-              <TouchableOpacity
-                style={styles.addNewButton}
-                onPress={handleAddAsset}
-              >
-                <Ionicons name="add-circle" size={28} color={theme.colors.primary} />
-                <Text style={styles.addNewButtonText}>Add Asset</Text>
-              </TouchableOpacity>
             </View>
+            <TouchableOpacity
+              style={[styles.addNewButton, styles.addAssetButtonStandalone]}
+              onPress={handleAddAsset}
+            >
+              <Ionicons name="add-circle" size={24} color={theme.colors.primary} />
+              <Text style={styles.addNewButtonText}>Add Asset</Text>
+            </TouchableOpacity>
             <View style={styles.iconContainer}>
               <Ionicons name="home-outline" size={60} color={theme.colors.primary} />
             </View>
-            <Text style={styles.stepSubtitle}>Select assets to assign to this beneficiary</Text>
+            <Text style={styles.stepSubtitle}>Select assets or policies to assign to this beneficiary</Text>
+
+            <View style={styles.beneficiaryChipsSection}>
+              {beneficiaryDrafts.map(beneficiary => (
+                <View key={beneficiary.key} style={styles.beneficiaryChip}>
+                  <Text style={styles.beneficiaryChipLabel}>{beneficiary.label}</Text>
+                  <Text style={styles.beneficiaryChipName}>
+                    {beneficiary.displayName || 'Details pending'}
+                  </Text>
+                </View>
+              ))}
+            </View>
 
             {loading ? (
               <View style={styles.loadingContainer}>
@@ -1102,13 +2015,67 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                             value={inlineBeneficiaryForm.surname}
                             onChangeText={(value) => updateInlineBeneficiaryField('surname', value)}
                           />
-                          <TextInput
-                            style={styles.input}
-                            placeholder="Relationship"
-                            placeholderTextColor={theme.colors.placeholder}
-                            value={inlineBeneficiaryForm.relationship}
-                            onChangeText={(value) => updateInlineBeneficiaryField('relationship', value)}
-                          />
+                          <View
+                            style={[
+                              styles.dropdownWrapper,
+                              inlineRelationshipDropdownVisible && styles.dropdownWrapperExpanded,
+                            ]}
+                          >
+                            <TouchableOpacity
+                              style={[styles.input, styles.dropdownInput]}
+                              onPress={() => setInlineRelationshipDropdownVisible(prev => !prev)}
+                            >
+                              <Text
+                                style={
+                                  inlineBeneficiaryForm.relationship || inlineRelationshipOption
+                                    ? styles.dropdownSelectedText
+                                    : styles.dropdownPlaceholder
+                                }
+                              >
+                                {inlineRelationshipOption === 'other' && inlineBeneficiaryForm.relationship
+                                  ? inlineBeneficiaryForm.relationship
+                                  : inlineRelationshipOption
+                                  ? relationshipOptions.find(opt => opt.value === inlineRelationshipOption)?.label || 'Select relationship'
+                                  : inlineBeneficiaryForm.relationship || 'Select relationship'}
+                              </Text>
+                              <Ionicons
+                                name={inlineRelationshipDropdownVisible ? 'chevron-up' : 'chevron-down'}
+                                size={20}
+                                color={theme.colors.textSecondary}
+                              />
+                            </TouchableOpacity>
+                            {inlineRelationshipDropdownVisible && (
+                              <View style={styles.dropdownList}>
+                                <ScrollView
+                                  style={styles.dropdownScroll}
+                                  nestedScrollEnabled
+                                  showsVerticalScrollIndicator
+                                  contentContainerStyle={styles.dropdownListContent}
+                                >
+                                  {relationshipOptions.map(option => (
+                                    <TouchableOpacity
+                                      key={option.value}
+                                      style={styles.dropdownOption}
+                                      onPress={() => handleSelectInlineRelationship(option.value, option.label)}
+                                    >
+                                      <Text style={styles.dropdownOptionText}>{option.label}</Text>
+                                    </TouchableOpacity>
+                                  ))}
+                                </ScrollView>
+                              </View>
+                            )}
+                          </View>
+
+                          {inlineRelationshipOption === 'other' && (
+                            <TextInput
+                              ref={inlineRelationshipInputRef}
+                              style={styles.input}
+                              placeholder="State Other relationship"
+                              placeholderTextColor={theme.colors.placeholder}
+                              value={inlineBeneficiaryForm.relationship}
+                              onChangeText={(value) => updateInlineBeneficiaryField('relationship', value)}
+                            />
+                          )}
                           <TextInput
                             style={styles.input}
                           placeholder="Email Address"
@@ -1122,7 +2089,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                             style={styles.input}
                           placeholder="Phone Number"
                             placeholderTextColor={theme.colors.placeholder}
-                            value={inlineBeneficiaryForm.phone}
+                            value={getDisplayPhone(inlineBeneficiaryForm.phone)}
                             onChangeText={(value) => updateInlineBeneficiaryField('phone', value)}
                             keyboardType="phone-pad"
                           />
@@ -1154,196 +2121,272 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                           </View>
                         </View>
                       )}
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-          </Animated.View>
-        );
-
-      case 2:
-        return (
-          <Animated.View style={[styles.stepContainer, animatedStyle]}>
-            <View style={styles.stepTitleContainer}>
-              <Text style={styles.stepTitle}>Link Policies</Text>
-              <TouchableOpacity
-                style={styles.addNewButton}
-                onPress={handleAddPolicy}
-              >
-                <Ionicons name="add-circle" size={28} color={theme.colors.primary} />
-                <Text style={styles.addNewButtonText}>Add Policy</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.iconContainer}>
-              <Ionicons name="shield-checkmark-outline" size={60} color={theme.colors.primary} />
-            </View>
-            <Text style={styles.stepSubtitle}>Select policies to assign to this beneficiary</Text>
-
-            {loading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={theme.colors.primary} />
-                <Text style={styles.loadingText}>Loading policies...</Text>
-              </View>
-            ) : policies.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>No policies added yet</Text>
-                <Text style={styles.emptyStateSubtext}>Add policies from the dashboard first</Text>
-              </View>
-            ) : (
-              <ScrollView style={styles.selectionContainer} nestedScrollEnabled>
-                {policies.map((policy) => (
-                  <View key={policy.policy_id}>
-                    <View style={styles.selectionOptionWithActions}>
-                      <TouchableOpacity
-                        style={[
-                          styles.selectionOption,
-                          formData.selectedPolicies.includes(policy.policy_id) && styles.selectionOptionActive,
-                        ]}
-                        onPress={() => togglePolicy(policy.policy_id)}
-                      >
-                        <Ionicons
-                          name={formData.selectedPolicies.includes(policy.policy_id) ? 'checkbox' : 'checkbox-outline'}
-                          size={24}
-                          color={formData.selectedPolicies.includes(policy.policy_id) ? theme.colors.primary : theme.colors.border}
-                        />
-                        <View style={styles.selectionTextContainer}>
-                          <Text style={styles.selectionText}>{policy.policy_number}</Text>
-                          <Text style={styles.selectionSubtext}>
-                            {policy.insurance_company} - {policy.policy_type.replace('_', ' ')}
+                    {formData.selectedAssets.includes(asset.asset_id) && (
+                      <View style={styles.allocationContainer}>
+                        <View style={styles.allocationHeader}>
+                          <Text style={styles.allocationTitle}>Split this asset</Text>
+                          <Text
+                            style={[
+                              styles.allocationTotal,
+                              Math.abs(getAllocationTotal(asset.asset_id) - 100) > 0.5 &&
+                                styles.allocationTotalWarning,
+                            ]}
+                          >
+                            Total: {getAllocationTotal(asset.asset_id)}%
                           </Text>
                         </View>
-                      </TouchableOpacity>
-                      <View style={styles.actionIconsContainer}>
-                        <TouchableOpacity
-                          style={styles.actionIcon}
-                          onPress={() => togglePolicyBeneficiaries(policy.policy_id)}
-                        >
-                          <Ionicons
-                            name={policyBeneficiariesExpanded[policy.policy_id] ? "eye" : "eye-off-outline"}
-                            size={24}
-                            color={
-                              policyBeneficiariesExpanded[policy.policy_id]
-                                ? theme.colors.primary
-                                : theme.colors.textSecondary
-                            }
-                          />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.actionIcon}
-                          onPress={() => beginInlineAdd('policy', policy.policy_id)}
-                        >
-                          <Ionicons name="add-circle-outline" size={24} color={theme.colors.success} />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                    {policyBeneficiariesExpanded[policy.policy_id] && (
-                      <View style={styles.linkedBeneficiariesContainer}>
-                        {policyBeneficiaries[policy.policy_id] && policyBeneficiaries[policy.policy_id].length > 0 ? (
-                          <>
-                            <View style={styles.linkedBeneficiariesHeader}>
-                              <Text style={styles.linkedBeneficiariesLabel}>
-                                Linked beneficiaries ({policyBeneficiaries[policy.policy_id].length})
+                        {combinedBeneficiariesForAsset[asset.asset_id]?.map(beneficiary => (
+                          <View key={`${asset.asset_id}-${beneficiary.key}`} style={styles.allocationRow}>
+                            <View style={styles.allocationRowInfo}>
+                              <Text style={styles.allocationBeneficiaryLabel}>{beneficiary.label}</Text>
+                              <Text style={styles.allocationBeneficiaryName}>
+                                {beneficiary.displayName || 'Details pending'}
                               </Text>
-                              <TouchableOpacity onPress={() => beginInlineAdd('policy', policy.policy_id)}>
-                                <Text style={styles.linkedBeneficiariesHint}>Tap + to add more</Text>
-                              </TouchableOpacity>
                             </View>
-                            {policyBeneficiaries[policy.policy_id].map((ben: any, idx: number) => (
-                              <View key={idx} style={styles.linkedBeneficiaryItemRow}>
-                                <Text style={styles.linkedBeneficiaryItem}>• {ben.beneficiary_name}</Text>
-                                <TouchableOpacity onPress={() => handleDelinkBeneficiary('policy', policy.policy_id, ben)}>
-                                  <Ionicons name="close-circle" size={28} color={theme.colors.error} />
-                                </TouchableOpacity>
-                              </View>
-                            ))}
-                          </>
-                        ) : (
-                          <>
-                            <Text style={styles.linkedBeneficiariesEmpty}>No beneficiaries linked yet.</Text>
-                            <TouchableOpacity onPress={() => beginInlineAdd('policy', policy.policy_id)}>
-                              <Text style={styles.linkedBeneficiariesHint}>Tap + to add more beneficiaries.</Text>
-                            </TouchableOpacity>
-                          </>
+                            <View style={styles.allocationInputWrapper}>
+                              <TextInput
+                                style={styles.allocationInput}
+                                keyboardType="numeric"
+                                value={
+                                  assetAllocations[asset.asset_id]?.[beneficiary.key] !== undefined
+                                    ? String(assetAllocations[asset.asset_id]?.[beneficiary.key])
+                                    : '0'
+                                }
+                                onChangeText={value =>
+                                  handleAllocationChange(asset.asset_id, beneficiary.key, value)
+                                }
+                                editable={!beneficiary.isExisting}
+                              />
+                              <Text style={styles.allocationPercentSymbol}>%</Text>
+                            </View>
+                            {beneficiary.isExisting && (
+                              <Text style={styles.existingBeneficiaryBadge}>Existing</Text>
+                            )}
+                          </View>
+                        ))}
+                        {Math.abs(getAllocationTotal(asset.asset_id) - 100) > 0.5 && (
+                          <Text style={styles.allocationErrorText}>
+                            Allocation must total 100% for {asset.asset_name}.
+                          </Text>
                         )}
                       </View>
                     )}
-                    {inlineAddTarget?.type === 'policy' &&
-                      inlineAddTarget.id === policy.policy_id && (
-                        <View style={styles.inlineAddContainer}>
-                          <TextInput
-                            style={styles.input}
-                            placeholder="First Name"
-                            placeholderTextColor={theme.colors.placeholder}
-                            value={inlineBeneficiaryForm.firstName}
-                            onChangeText={(value) => updateInlineBeneficiaryField('firstName', value)}
-                          />
-                          <TextInput
-                            style={styles.input}
-                            placeholder="Surname"
-                            placeholderTextColor={theme.colors.placeholder}
-                            value={inlineBeneficiaryForm.surname}
-                            onChangeText={(value) => updateInlineBeneficiaryField('surname', value)}
-                          />
-                          <TextInput
-                            style={styles.input}
-                            placeholder="Relationship"
-                            placeholderTextColor={theme.colors.placeholder}
-                            value={inlineBeneficiaryForm.relationship}
-                            onChangeText={(value) => updateInlineBeneficiaryField('relationship', value)}
-                          />
-                          <TextInput
-                            style={styles.input}
-                          placeholder="Email Address"
-                            placeholderTextColor={theme.colors.placeholder}
-                            value={inlineBeneficiaryForm.email}
-                            onChangeText={(value) => updateInlineBeneficiaryField('email', value)}
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                          />
-                          <TextInput
-                            style={styles.input}
-                          placeholder="Phone Number"
-                            placeholderTextColor={theme.colors.placeholder}
-                            value={inlineBeneficiaryForm.phone}
-                            onChangeText={(value) => updateInlineBeneficiaryField('phone', value)}
-                            keyboardType="phone-pad"
-                          />
-                        <TextInput
-                          style={styles.input}
-                          placeholder="Address"
-                          placeholderTextColor={theme.colors.placeholder}
-                          value={inlineBeneficiaryForm.address}
-                          onChangeText={(value) => updateInlineBeneficiaryField('address', value)}
-                          multiline
-                        />
-                          <View style={styles.inlineAddActions}>
-                            <TouchableOpacity
-                              style={styles.inlineCancelButton}
-                              onPress={cancelInlineAdd}
-                              disabled={inlineAdding}
-                            >
-                              <Text style={styles.inlineCancelButtonText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={styles.inlineAddButton}
-                              onPress={handleInlineBeneficiarySave}
-                              disabled={inlineAdding}
-                            >
-                              <Text style={styles.inlineAddButtonText}>
-                                {inlineAdding ? 'Saving...' : 'Save & Link'}
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      )}
                   </View>
                 ))}
               </ScrollView>
             )}
+
+            {!loading && policies.length > 0 && (
+              <View style={styles.policySection}>
+                <Text style={styles.sectionDividerTitle}>Policies</Text>
+                <ScrollView style={styles.selectionContainer} nestedScrollEnabled>
+                  {policies.map((policy) => (
+                    <View key={policy.policy_id}>
+                      <View style={styles.selectionOptionWithActions}>
+                        <TouchableOpacity
+                          style={[
+                            styles.selectionOption,
+                            formData.selectedPolicies.includes(policy.policy_id) && styles.selectionOptionActive,
+                          ]}
+                          onPress={() => togglePolicy(policy.policy_id)}
+                        >
+                          <Ionicons
+                            name={formData.selectedPolicies.includes(policy.policy_id) ? 'checkbox' : 'checkbox-outline'}
+                            size={24}
+                            color={formData.selectedPolicies.includes(policy.policy_id) ? theme.colors.primary : theme.colors.border}
+                          />
+                          <View style={styles.selectionTextContainer}>
+                            <Text style={styles.selectionText}>{policy.policy_number}</Text>
+                            <Text style={styles.selectionSubtext}>
+                              {policy.insurance_company} - {policy.policy_type.replace('_', ' ')}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                        <View style={styles.actionIconsContainer}>
+                          <TouchableOpacity
+                            style={styles.actionIcon}
+                            onPress={() => togglePolicyBeneficiaries(policy.policy_id)}
+                          >
+                            <Ionicons
+                              name={policyBeneficiariesExpanded[policy.policy_id] ? "eye" : "eye-off-outline"}
+                              size={24}
+                              color={
+                                policyBeneficiariesExpanded[policy.policy_id]
+                                  ? theme.colors.primary
+                                  : theme.colors.textSecondary
+                              }
+                            />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.actionIcon}
+                            onPress={() => beginInlineAdd('policy', policy.policy_id)}
+                          >
+                            <Ionicons name="add-circle-outline" size={24} color={theme.colors.success} />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      {policyBeneficiariesExpanded[policy.policy_id] && (
+                        <View style={styles.linkedBeneficiariesContainer}>
+                          {policyBeneficiaries[policy.policy_id] && policyBeneficiaries[policy.policy_id].length > 0 ? (
+                            <>
+                              <View style={styles.linkedBeneficiariesHeader}>
+                                <Text style={styles.linkedBeneficiariesLabel}>
+                                  Linked beneficiaries ({policyBeneficiaries[policy.policy_id].length})
+                                </Text>
+                                <TouchableOpacity onPress={() => beginInlineAdd('policy', policy.policy_id)}>
+                                  <Text style={styles.linkedBeneficiariesHint}>Tap + to add more</Text>
+                                </TouchableOpacity>
+                              </View>
+                              {policyBeneficiaries[policy.policy_id].map((ben: any, idx: number) => (
+                                <View key={idx} style={styles.linkedBeneficiaryItemRow}>
+                                  <Text style={styles.linkedBeneficiaryItem}>• {ben.beneficiary_name}</Text>
+                                  <TouchableOpacity onPress={() => handleDelinkBeneficiary('policy', policy.policy_id, ben)}>
+                                    <Ionicons name="close-circle" size={28} color={theme.colors.error} />
+                                  </TouchableOpacity>
+                                </View>
+                              ))}
+                            </>
+                          ) : (
+                            <>
+                              <Text style={styles.linkedBeneficiariesEmpty}>No beneficiaries linked yet.</Text>
+                              <TouchableOpacity onPress={() => beginInlineAdd('policy', policy.policy_id)}>
+                                <Text style={styles.linkedBeneficiariesHint}>Tap + to add more beneficiaries.</Text>
+                              </TouchableOpacity>
+                            </>
+                          )}
+                        </View>
+                      )}
+                      {inlineAddTarget?.type === 'policy' &&
+                        inlineAddTarget.id === policy.policy_id && (
+                          <View style={styles.inlineAddContainer}>
+                            <TextInput
+                              style={styles.input}
+                              placeholder="First Name"
+                              placeholderTextColor={theme.colors.placeholder}
+                              value={inlineBeneficiaryForm.firstName}
+                              onChangeText={(value) => updateInlineBeneficiaryField('firstName', value)}
+                            />
+                            <TextInput
+                              style={styles.input}
+                              placeholder="Surname"
+                              placeholderTextColor={theme.colors.placeholder}
+                              value={inlineBeneficiaryForm.surname}
+                              onChangeText={(value) => updateInlineBeneficiaryField('surname', value)}
+                            />
+                            <View
+                              style={[
+                                styles.dropdownWrapper,
+                                inlineRelationshipDropdownVisible && styles.dropdownWrapperExpanded,
+                              ]}
+                            >
+                              <TouchableOpacity
+                                style={[styles.input, styles.dropdownInput]}
+                                onPress={() => setInlineRelationshipDropdownVisible(prev => !prev)}
+                              >
+                                <Text
+                                  style={
+                                    inlineBeneficiaryForm.relationship || inlineRelationshipOption
+                                      ? styles.dropdownSelectedText
+                                      : styles.dropdownPlaceholder
+                                  }
+                                >
+                                  {inlineRelationshipOption === 'other' && inlineBeneficiaryForm.relationship
+                                    ? inlineBeneficiaryForm.relationship
+                                    : inlineRelationshipOption
+                                    ? relationshipOptions.find(opt => opt.value === inlineRelationshipOption)?.label || 'Select relationship'
+                                    : inlineBeneficiaryForm.relationship || 'Select relationship'}
+                                </Text>
+                                <Ionicons
+                                  name={inlineRelationshipDropdownVisible ? 'chevron-up' : 'chevron-down'}
+                                  size={20}
+                                  color={theme.colors.textSecondary}
+                                />
+                              </TouchableOpacity>
+                              {inlineRelationshipDropdownVisible && (
+                                <View style={styles.dropdownList}>
+                                  <ScrollView
+                                    style={styles.dropdownScroll}
+                                    nestedScrollEnabled
+                                    showsVerticalScrollIndicator
+                                    contentContainerStyle={styles.dropdownListContent}
+                                  >
+                                    {relationshipOptions.map(option => (
+                                      <TouchableOpacity
+                                        key={option.value}
+                                        style={styles.dropdownOption}
+                                        onPress={() => handleSelectInlineRelationship(option.value, option.label)}
+                                      >
+                                        <Text style={styles.dropdownOptionText}>{option.label}</Text>
+                                      </TouchableOpacity>
+                                    ))}
+                                  </ScrollView>
+                                </View>
+                              )}
+                            </View>
+
+                            {inlineRelationshipOption === 'other' && (
+                              <TextInput
+                                ref={inlineRelationshipInputRef}
+                                style={styles.input}
+                                placeholder="State Other relationship"
+                                placeholderTextColor={theme.colors.placeholder}
+                                value={inlineBeneficiaryForm.relationship}
+                                onChangeText={(value) => updateInlineBeneficiaryField('relationship', value)}
+                              />
+                            )}
+                            <TextInput
+                              style={styles.input}
+                              placeholder="Email Address"
+                              placeholderTextColor={theme.colors.placeholder}
+                              value={inlineBeneficiaryForm.email}
+                              onChangeText={(value) => updateInlineBeneficiaryField('email', value)}
+                              keyboardType="email-address"
+                              autoCapitalize="none"
+                            />
+                            <TextInput
+                              style={styles.input}
+                              placeholder="Phone Number"
+                              placeholderTextColor={theme.colors.placeholder}
+                            value={getDisplayPhone(inlineBeneficiaryForm.phone)}
+                              onChangeText={(value) => updateInlineBeneficiaryField('phone', value)}
+                              keyboardType="phone-pad"
+                            />
+                            <TextInput
+                              style={styles.input}
+                              placeholder="Address"
+                              placeholderTextColor={theme.colors.placeholder}
+                              value={inlineBeneficiaryForm.address}
+                              onChangeText={(value) => updateInlineBeneficiaryField('address', value)}
+                              multiline
+                            />
+                            <View style={styles.inlineAddActions}>
+                              <TouchableOpacity
+                                style={styles.inlineCancelButton}
+                                onPress={cancelInlineAdd}
+                                disabled={inlineAdding}
+                              >
+                                <Text style={styles.inlineCancelButtonText}>Cancel</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.inlineAddButton}
+                                onPress={handleInlineBeneficiarySave}
+                                disabled={inlineAdding}
+                              >
+                                <Text style={styles.inlineAddButtonText}>
+                                  {inlineAdding ? 'Saving...' : 'Save & Link'}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        )}
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
           </Animated.View>
         );
-
-      case 3:
+      case 2:
         return (
           <Animated.View style={[styles.stepContainer, animatedStyle]}>
             <Text style={styles.stepTitle}>Review Beneficiary</Text>
@@ -1354,69 +2397,65 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
 
             <ScrollView style={styles.reviewContainer} nestedScrollEnabled>
               <View style={styles.reviewSection}>
-                <Text style={styles.reviewSectionTitle}>Beneficiary Details</Text>
-                <Text style={styles.reviewItem}>
-                  Name: {(formData.beneficiaryName || '').trim()}
-                </Text>
-                <Text style={styles.reviewItem}>
-                  First Name: {formData.beneficiaryFirstName}
-                </Text>
-                <Text style={styles.reviewItem}>Surname: {formData.beneficiarySurname}</Text>
-                <Text style={styles.reviewItem}>Relationship: {formData.relationshipToUser}</Text>
-                {formData.beneficiaryEmail && (
-                  <Text style={styles.reviewItem}>Email: {formData.beneficiaryEmail}</Text>
-                )}
-                {formData.beneficiaryPhone && (
-                  <Text style={styles.reviewItem}>Phone: {formData.beneficiaryPhone}</Text>
-                )}
-                {formData.beneficiaryAddress && (
-                  <Text style={styles.reviewItem}>Address: {formData.beneficiaryAddress}</Text>
-                )}
+                <Text style={styles.reviewSectionTitle}>Beneficiaries</Text>
+                {beneficiaryDrafts.map((beneficiary) => (
+                  <View key={beneficiary.key} style={styles.beneficiaryReviewCard}>
+                    <Text style={styles.beneficiaryReviewLabel}>{beneficiary.label}</Text>
+                    <Text style={styles.reviewItem}>
+                      Name:{' '}
+                      {`${beneficiary.firstName} ${beneficiary.surname}`.trim() ||
+                        beneficiary.displayName}
+                    </Text>
+                    <Text style={styles.reviewItem}>
+                      Relationship: {beneficiary.relationship || 'Not specified'}
+                    </Text>
+                    <Text style={styles.reviewItem}>
+                      Email: {beneficiary.email || 'Not specified'}
+                    </Text>
+                    <Text style={styles.reviewItem}>
+                      Phone:{' '}
+                      {beneficiary.phone ? getDisplayPhone(beneficiary.phone) : 'Not specified'}
+                    </Text>
+                    <Text style={styles.reviewItem}>
+                      Address: {beneficiary.address || 'Not specified'}
+                    </Text>
+                  </View>
+                ))}
               </View>
-
-              {additionalBeneficiaries.length > 0 && (
-                <View style={styles.reviewSection}>
-                  <Text style={styles.reviewSectionTitle}>Additional Beneficiaries</Text>
-                  {additionalBeneficiaries
-                    .filter(entry =>
-                      entry.firstName.trim() ||
-                      entry.surname.trim() ||
-                      entry.relationship.trim()
-                    )
-                    .map((entry, idx) => (
-                      <View key={entry.id || idx} style={styles.reviewSubSection}>
-                        <Text style={styles.reviewItem}>
-                          {`${entry.firstName} ${entry.surname}`.trim()}
-                        </Text>
-                        {entry.relationship.trim() ? (
-                          <Text style={styles.reviewItem}>
-                            Relationship: {entry.relationship.trim()}
-                          </Text>
-                        ) : null}
-                        {entry.email.trim() ? (
-                          <Text style={styles.reviewItem}>Email: {entry.email.trim()}</Text>
-                        ) : null}
-                        {entry.phone.trim() ? (
-                          <Text style={styles.reviewItem}>Phone: {entry.phone.trim()}</Text>
-                        ) : null}
-                        {entry.address.trim() ? (
-                          <Text style={styles.reviewItem}>Address: {entry.address.trim()}</Text>
-                        ) : null}
-                      </View>
-                    ))}
-                </View>
-              )}
 
               {formData.selectedAssets.length > 0 && (
                 <View style={styles.reviewSection}>
                   <Text style={styles.reviewSectionTitle}>Assigned Assets ({formData.selectedAssets.length})</Text>
                   {formData.selectedAssets.map((assetId) => {
                     const asset = assets.find(a => a.asset_id === assetId);
-                    return asset ? (
-                      <Text key={assetId} style={styles.reviewItem}>
-                        • {asset.asset_name} ({asset.asset_type.replace('_', ' ')})
-                      </Text>
-                    ) : null;
+                    if (!asset) return null;
+                    const allocations = assetAllocations[assetId] || {};
+                    const allocationEntries = beneficiaryDrafts
+                      .map(beneficiary => ({
+                        label: beneficiary.label,
+                        name:
+                          `${beneficiary.firstName} ${beneficiary.surname}`.trim() ||
+                          beneficiary.displayName,
+                        percentage: allocations[beneficiary.key] ?? (beneficiary.isPrimary ? 100 : 0),
+                      }))
+                      .filter(entry => entry.percentage > 0);
+
+                    return (
+                      <View key={assetId} style={styles.reviewSubSection}>
+                        <Text style={styles.reviewItem}>
+                          • {asset.asset_name} ({asset.asset_type.replace('_', ' ')})
+                        </Text>
+                        {allocationEntries.length > 0 ? (
+                          allocationEntries.map(entry => (
+                            <Text key={`${assetId}-${entry.label}`} style={styles.reviewAllocationItem}>
+                              {entry.label}: {entry.percentage}% ({entry.name})
+                            </Text>
+                          ))
+                        ) : (
+                          <Text style={styles.reviewAllocationItem}>No allocation set</Text>
+                        )}
+                      </View>
+                    );
                   })}
                 </View>
               )}
@@ -1462,7 +2501,13 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
             <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Add Beneficiary</Text>
-          <View style={{ width: 24 }} />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Dashboard')}
+            disabled={saving}
+            style={styles.homeButton}
+          >
+            <Ionicons name="home" size={24} color={theme.colors.primary} />
+          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -1513,14 +2558,146 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
             <Ionicons name="people-circle-outline" size={40} color={theme.colors.primary} />
             <Text style={styles.guidedModalTitle}>Link beneficiaries</Text>
             <Text style={styles.guidedModalBody}>
-              Select the assets or policies on each step to assign who should receive them. You can split percentages or add more beneficiaries later.
+            Now that you have added an asset you can assign the asset to a beneficiary.
             </Text>
             <TouchableOpacity
               style={styles.guidedModalButton}
-              onPress={() => setShowGuidedExplainer(false)}
+              onPress={async () => {
+                if (dontShowGuidedExplainerAgain) {
+                  await setDontShowAgain('ADD_BENEFICIARY_GUIDED');
+                }
+                setShowGuidedExplainer(false);
+              }}
             >
-              <Text style={styles.guidedModalButtonText}>Let’s start linking</Text>
+              <Text style={styles.guidedModalButtonText}>Let's start linking</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalCheckboxContainer}
+              onPress={() => setDontShowGuidedExplainerAgain(!dontShowGuidedExplainerAgain)}
+            >
+              <View style={[styles.modalCheckbox, dontShowGuidedExplainerAgain && styles.modalCheckboxChecked]}>
+                {dontShowGuidedExplainerAgain && <Text style={styles.modalCheckmark}>✓</Text>}
+              </View>
+              <Text style={styles.modalCheckboxText}>Don't show again</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Beneficiary Selection Modal */}
+      <Modal
+        visible={showBeneficiarySelectionModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowBeneficiarySelectionModal(false)}
+      >
+        <View style={styles.beneficiarySelectionOverlay}>
+          <View style={styles.beneficiarySelectionContent}>
+            <View style={styles.beneficiarySelectionHeader}>
+              <Text style={styles.beneficiarySelectionTitle}>Add Beneficiary</Text>
+              <TouchableOpacity onPress={() => setShowBeneficiarySelectionModal(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.beneficiarySelectionOption}
+              onPress={handleCreateNewBeneficiary}
+            >
+              <View style={styles.beneficiarySelectionIconContainer}>
+                <Ionicons name="person-add" size={24} color={theme.colors.primary} />
+              </View>
+              <View style={styles.beneficiarySelectionTextContainer}>
+                <Text style={styles.beneficiarySelectionOptionTitle}>Create New Beneficiary</Text>
+                <Text style={styles.beneficiarySelectionOptionSubtitle}>
+                  Add a new beneficiary and link to this {beneficiarySelectionTarget?.type}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+
+            <View style={styles.beneficiarySelectionDivider}>
+              <View style={styles.beneficiarySelectionDividerLine} />
+              <Text style={styles.beneficiarySelectionDividerText}>OR</Text>
+              <View style={styles.beneficiarySelectionDividerLine} />
+            </View>
+
+            <Text style={styles.beneficiarySelectionSubheading}>Select Existing Beneficiary</Text>
+
+            <ScrollView 
+              style={styles.beneficiarySelectionList}
+              showsVerticalScrollIndicator={false}
+            >
+              {allBeneficiaries.length === 0 ? (
+                <View style={styles.beneficiarySelectionEmpty}>
+                  <Ionicons name="people-outline" size={48} color={theme.colors.textSecondary} />
+                  <Text style={styles.beneficiarySelectionEmptyText}>
+                    No existing beneficiaries yet
+                  </Text>
+                  <Text style={styles.beneficiarySelectionEmptySubtext}>
+                    Create your first beneficiary to get started
+                  </Text>
+                </View>
+              ) : (
+                allBeneficiaries.map((beneficiary) => {
+                  const isLinked = beneficiarySelectionTarget?.type === 'asset'
+                    ? (assetBeneficiaries[beneficiarySelectionTarget?.id || ''] || []).some(
+                        (b: any) => b.beneficiary_id === beneficiary.beneficiary_id
+                      )
+                    : (policyBeneficiaries[beneficiarySelectionTarget?.id || ''] || []).some(
+                        (b: any) => b.beneficiary_id === beneficiary.beneficiary_id
+                      );
+
+                  const displayName =
+                    beneficiary.beneficiary_name ||
+                    `${beneficiary.beneficiary_first_name || ''} ${beneficiary.beneficiary_surname || ''}`.trim() ||
+                    'Unnamed Beneficiary';
+
+                  return (
+                    <TouchableOpacity
+                      key={beneficiary.beneficiary_id}
+                      style={[
+                        styles.beneficiarySelectionItem,
+                        isLinked && styles.beneficiarySelectionItemDisabled,
+                      ]}
+                      onPress={() => !isLinked && handleSelectExistingBeneficiary(beneficiary)}
+                      disabled={isLinked}
+                    >
+                      <View style={styles.beneficiarySelectionItemIcon}>
+                        <Ionicons
+                          name={isLinked ? "checkmark-circle" : "person-circle-outline"}
+                          size={32}
+                          color={isLinked ? theme.colors.success : theme.colors.primary}
+                        />
+                      </View>
+                      <View style={styles.beneficiarySelectionItemText}>
+                        <Text
+                          style={[
+                            styles.beneficiarySelectionItemName,
+                            isLinked && styles.beneficiarySelectionItemNameDisabled,
+                          ]}
+                        >
+                          {displayName}
+                        </Text>
+                        {beneficiary.relationship_to_user && (
+                          <Text style={styles.beneficiarySelectionItemRelationship}>
+                            {beneficiary.relationship_to_user}
+                          </Text>
+                        )}
+                        {isLinked && (
+                          <Text style={styles.beneficiarySelectionItemLinkedText}>
+                            Already linked
+                          </Text>
+                        )}
+                      </View>
+                      {!isLinked && (
+                        <Ionicons name="add-circle" size={24} color={theme.colors.success} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -1549,6 +2726,14 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.weights.bold as any,
     color: theme.colors.text,
   },
+  homeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.primary + '12',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: theme.spacing.xl,
@@ -1573,6 +2758,11 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
   },
+  stepTitleActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
   addNewButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1582,6 +2772,10 @@ const styles = StyleSheet.create({
     borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
     borderColor: theme.colors.primary,
+  },
+  addAssetButtonStandalone: {
+    alignSelf: 'flex-end',
+    marginBottom: theme.spacing.sm,
   },
   addNewButtonText: {
     fontSize: theme.typography.sizes.sm,
@@ -1599,6 +2793,30 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.xl,
     textAlign: 'center',
   },
+  beneficiaryChipsSection: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.xl,
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.surface,
+    marginBottom: theme.spacing.lg,
+    gap: theme.spacing.xs,
+  },
+  beneficiaryChip: {
+    backgroundColor: theme.colors.primary + '08',
+    borderRadius: theme.borderRadius.lg,
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.md,
+  },
+  beneficiaryChipLabel: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.primary,
+  },
+  beneficiaryChipName: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
+  },
   input: {
     height: 56,
     borderWidth: 2,
@@ -1610,8 +2828,75 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.inputBackground,
     marginBottom: theme.spacing.md,
   },
+  dropdownWrapper: {
+    position: 'relative',
+    marginBottom: theme.spacing.md,
+  },
+  dropdownWrapperExpanded: {
+    paddingBottom: 160,
+  },
+  dropdownInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 0,
+  },
+  dropdownPlaceholder: {
+    color: theme.colors.placeholder,
+    fontSize: theme.typography.sizes.md,
+  },
+  dropdownSelectedText: {
+    color: theme.colors.text,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.medium as any,
+  },
+  dropdownList: {
+    position: 'absolute',
+    top: 64,
+    left: 0,
+    right: 0,
+    backgroundColor: theme.colors.surface,
+    opacity: 1,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    zIndex: 20,
+    elevation: 4,
+    shadowColor: '#00000033',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    maxHeight: 160,
+    overflow: 'hidden',
+  },
+  dropdownListContent: {
+    paddingVertical: theme.spacing.xs,
+    backgroundColor: theme.colors.surface,
+  },
+  dropdownScroll: {
+    backgroundColor: theme.colors.surface,
+  },
+  dropdownOption: {
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderLight,
+  },
+  dropdownOptionText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.text,
+  },
   selectionContainer: {
     maxHeight: 300,
+  },
+  policySection: {
+    marginTop: theme.spacing.xl,
+  },
+  sectionDividerTitle: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
   },
   selectionOptionWithActions: {
     flexDirection: 'row',
@@ -1681,6 +2966,25 @@ const styles = StyleSheet.create({
   },
   reviewSubSection: {
     marginBottom: theme.spacing.sm,
+  },
+  beneficiaryReviewCard: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    backgroundColor: theme.colors.surface,
+  },
+  beneficiaryReviewLabel: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.primary,
+    marginBottom: theme.spacing.xs,
+  },
+  reviewAllocationItem: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.textSecondary,
+    marginLeft: theme.spacing.md,
   },
   reviewSectionTitle: {
     fontSize: theme.typography.sizes.md,
@@ -1752,6 +3056,87 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.xs,
     color: theme.colors.success,
     fontStyle: 'italic',
+  },
+  allocationContainer: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    padding: theme.spacing.md,
+    marginTop: theme.spacing.sm,
+    backgroundColor: theme.colors.surface,
+    gap: theme.spacing.sm,
+  },
+  allocationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  allocationTitle: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+  },
+  allocationTotal: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+  },
+  allocationTotalWarning: {
+    color: theme.colors.error,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  allocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.md,
+  },
+  allocationRowInfo: {
+    flex: 1,
+  },
+  allocationBeneficiaryLabel: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+  },
+  allocationBeneficiaryName: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.textSecondary,
+  },
+  allocationInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs / 2,
+  },
+  allocationInput: {
+    width: 60,
+    textAlign: 'right',
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
+    padding: 0,
+    margin: 0,
+  },
+  allocationPercentSymbol: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    marginLeft: theme.spacing.xs / 2,
+  },
+  allocationErrorText: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.error,
+  },
+  existingBeneficiaryBadge: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.weights.semibold as any,
+    marginLeft: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs / 2,
+    backgroundColor: theme.colors.primary + '15',
+    borderRadius: theme.borderRadius.sm,
   },
   linkedBeneficiariesEmpty: {
     fontSize: theme.typography.sizes.sm,
@@ -1909,6 +3294,180 @@ const styles = StyleSheet.create({
     color: theme.colors.buttonText,
     fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.semibold as any,
+  },
+  modalCheckboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  modalCheckbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.sm,
+    marginRight: theme.spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+  },
+  modalCheckboxChecked: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  modalCheckmark: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold' as any,
+  },
+  modalCheckboxText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
+  },
+  beneficiarySelectionOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  beneficiarySelectionContent: {
+    backgroundColor: theme.colors.background,
+    borderTopLeftRadius: theme.borderRadius.xxl,
+    borderTopRightRadius: theme.borderRadius.xxl,
+    maxHeight: '80%',
+    paddingTop: theme.spacing.xl,
+    paddingBottom: theme.spacing.xxl,
+  },
+  beneficiarySelectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.xl,
+    paddingBottom: theme.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  beneficiarySelectionTitle: {
+    fontSize: theme.typography.sizes.xl,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+  },
+  beneficiarySelectionOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.xl,
+    paddingVertical: theme.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    marginHorizontal: theme.spacing.xl,
+    marginTop: theme.spacing.lg,
+    borderRadius: theme.borderRadius.xl,
+  },
+  beneficiarySelectionIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: theme.colors.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: theme.spacing.md,
+  },
+  beneficiarySelectionTextContainer: {
+    flex: 1,
+  },
+  beneficiarySelectionOptionTitle: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs / 2,
+  },
+  beneficiarySelectionOptionSubtitle: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+  },
+  beneficiarySelectionDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: theme.spacing.xl,
+    marginVertical: theme.spacing.lg,
+  },
+  beneficiarySelectionDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: theme.colors.border,
+  },
+  beneficiarySelectionDividerText: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.textSecondary,
+    marginHorizontal: theme.spacing.md,
+  },
+  beneficiarySelectionSubheading: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    paddingHorizontal: theme.spacing.xl,
+    marginBottom: theme.spacing.md,
+  },
+  beneficiarySelectionList: {
+    paddingHorizontal: theme.spacing.xl,
+    maxHeight: 300,
+  },
+  beneficiarySelectionEmpty: {
+    alignItems: 'center',
+    paddingVertical: theme.spacing.xxxl,
+  },
+  beneficiarySelectionEmptyText: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.md,
+  },
+  beneficiarySelectionEmptySubtext: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    marginTop: theme.spacing.xs,
+  },
+  beneficiarySelectionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xl,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  beneficiarySelectionItemDisabled: {
+    opacity: 0.6,
+    backgroundColor: theme.colors.border + '40',
+  },
+  beneficiarySelectionItemIcon: {
+    marginRight: theme.spacing.md,
+  },
+  beneficiarySelectionItemText: {
+    flex: 1,
+  },
+  beneficiarySelectionItemName: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs / 2,
+  },
+  beneficiarySelectionItemNameDisabled: {
+    color: theme.colors.textSecondary,
+  },
+  beneficiarySelectionItemRelationship: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.xs / 2,
+  },
+  beneficiarySelectionItemLinkedText: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.success,
+    fontStyle: 'italic',
   },
 });
 

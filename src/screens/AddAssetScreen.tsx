@@ -25,6 +25,7 @@ import {
   FinancingStatus,
   FinanceProviderType,
 } from '../types/asset';
+import { shouldShowModal, setDontShowAgain } from '../utils/modalPreferences';
 
 const { width } = Dimensions.get('window');
 
@@ -67,8 +68,6 @@ const banksAndFintechs: string[] = [
   'Old Mutual',
   'Standard Bank',
   'TymeBank',
-  'RainFin',
-  'African Rainbow Capital',
   'Other',
 ];
 
@@ -91,7 +90,7 @@ const assetTypeDescriptions: Record<string, { title: string; subtitle: string }>
   investment: {
     title: 'Investment Asset Guide',
     subtitle:
-      'Include unit trusts, retirement funds, or stock portfolios. Ensure beneficiary designations align with the policy rules. Percentages help clarify asset splits.',
+      'Include unit trusts, retirement funds, or stock portfolios. Ensure beneficiary designations align with the policy rules. Percentages help clarify Asset splits.',
   },
   jewelry: {
     title: 'Jewelry Asset Guide',
@@ -116,7 +115,7 @@ const assetTypeDescriptions: Record<string, { title: string; subtitle: string }>
   other: {
     title: 'Other Asset Guide',
     subtitle:
-      'Use this category for assets that do not fit the predefined list. Include as much detail as possible so that executors understand your intentions.',
+      'Use this category for Assets that do not fit the predefined list. Include as much detail as possible so that executors understand your intentions.',
   },
 };
 
@@ -184,8 +183,11 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
   const [infoModalContent, setInfoModalContent] = useState<{ title: string; subtitle: string } | null>(null);
   const [showPolicyRedirectModal, setShowPolicyRedirectModal] = useState(false);
   const [showFirstTimeModal, setShowFirstTimeModal] = useState(false);
+  const [dontShowFirstTimeAgain, setDontShowFirstTimeAgain] = useState(false);
   const [showLinkExplainerModal, setShowLinkExplainerModal] = useState(false);
+  const [dontShowLinkExplainerAgain, setDontShowLinkExplainerAgain] = useState(false);
   const [linkExplainerShown, setLinkExplainerShown] = useState(false);
+  const [bankListCollapsed, setBankListCollapsed] = useState(false);
 
   const [formData, setFormData] = useState<AssetFormState>({
     assetName: '',
@@ -206,11 +208,40 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
   const totalSteps = 3;
   const fromGuidedWill = route?.params?.fromGuidedWill ?? false;
 
+  // Show modal every time user enters the screen
   useEffect(() => {
-    if (route?.params?.showFirstTimeExplainer) {
-      setShowFirstTimeModal(true);
+    const checkAndShowModal = async () => {
+      try {
+        const shouldShow = await shouldShowModal('ADD_ASSET_FIRST_TIME');
+        console.log('[AddAssetScreen] Should show first time modal:', shouldShow, 'Current state:', showFirstTimeModal);
+        if (shouldShow) {
+          console.log('[AddAssetScreen] Setting showFirstTimeModal to true');
+          setShowFirstTimeModal(true);
+        }
+      } catch (error) {
+        console.error('[AddAssetScreen] Error checking modal preference:', error);
+        // Default to showing modal on error
+        setShowFirstTimeModal(true);
+      }
+    };
+    
+    // Check immediately on mount
+    checkAndShowModal();
+    
+    // Also check on focus (when navigating back to this screen)
+    const unsubscribe = navigation.addListener('focus', () => {
+      console.log('[AddAssetScreen] Screen focused, checking modal');
+      checkAndShowModal();
+    });
+    
+    return unsubscribe;
+  }, [navigation]);
+
+  useEffect(() => {
+    if (formData.financeProviderType !== 'bank') {
+      setBankListCollapsed(false);
     }
-  }, [route?.params?.showFirstTimeExplainer]);
+  }, [formData.financeProviderType]);
 
   const updateFormData = (field: keyof AssetFormState, value: string) => {
     if (field === 'assetValue') {
@@ -263,16 +294,37 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
     updateFormData('assetType', type);
   };
 
-  const handleLinkBeneficiaryRequest = () => {
+  const handleLinkBeneficiaryRequest = async () => {
     if (fromGuidedWill && !linkExplainerShown) {
-      setShowLinkExplainerModal(true);
+      const shouldShow = await shouldShowModal('ADD_ASSET_LINK_BENEFICIARY');
+      if (shouldShow) {
+        setShowLinkExplainerModal(true);
+      } else {
+        setLinkExplainerShown(true);
+        handleSaveAsset('link');
+      }
     } else {
       handleSaveAsset('link');
     }
   };
 
+  const handleBankSelection = (bank: string) => {
+    if (bankListCollapsed && formData.financeProviderName === bank) {
+      setBankListCollapsed(false);
+      return;
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      financeProviderName: bank,
+      financeProviderOther: bank === 'Other' ? prev.financeProviderOther : '',
+    }));
+
+    setBankListCollapsed(bank !== 'Other');
+  };
+
   const getAssetDisclaimer = (): string => {
-    return 'Read more about asset class, please consult an attorney for further information';
+    return 'Read more about Asset classes, please consult an attorney for further information';
   };
 
   const openAssetInfo = (assetType: string) => {
@@ -292,32 +344,26 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
       // Validate required fields before proceeding
       if (currentStep === 0) {
         if (!formData.assetName.trim()) {
-          setToastMessage('Please enter an asset name');
+          setToastMessage('Please enter an Asset name');
           setToastType('error');
           setShowToast(true);
           return;
         }
         if (!formData.assetType) {
-          setToastMessage('Please select an asset type');
+          setToastMessage('Please select an Asset type');
           setToastType('error');
           setShowToast(true);
           return;
         }
         if (formData.assetType === 'other' && !formData.otherAssetType.trim()) {
-          setToastMessage('Please specify your asset type');
+          setToastMessage('Please specify your Asset type');
           setToastType('error');
           setShowToast(true);
           return;
         }
       } else if (currentStep === 1) {
         if (!formData.assetValue.trim()) {
-          setToastMessage('Please enter an asset value');
-          setToastType('error');
-          setShowToast(true);
-          return;
-        }
-        if (!formData.assetLocation.trim()) {
-          setToastMessage('Please enter an asset location');
+          setToastMessage('Please enter an Asset value');
           setToastType('error');
           setShowToast(true);
           return;
@@ -337,6 +383,16 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
           }
           if (formData.financeProviderType === 'bank' && !formData.financeProviderName) {
             setToastMessage('Please choose a bank or fintech provider');
+            setToastType('error');
+            setShowToast(true);
+            return;
+          }
+          if (
+            formData.financeProviderType === 'bank' &&
+            formData.financeProviderName === 'Other' &&
+            !formData.financeProviderOther.trim()
+          ) {
+            setToastMessage('Please specify the bank name');
             setToastType('error');
             setShowToast(true);
             return;
@@ -415,7 +471,7 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
 
   const handleSaveAsset = async (nextAction: 'back' | 'link' = 'back') => {
     if (!currentUser) {
-      setToastMessage('You must be logged in to add an asset');
+      setToastMessage('You must be logged in to add an Asset');
       setToastType('error');
       setShowToast(true);
       return;
@@ -429,8 +485,14 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
         financingStatus === 'financed'
           ? ((formData.financeProviderType as FinanceProviderType) || 'bank')
           : 'owned';
+      const resolvedBankName =
+        formData.financeProviderName === 'Other'
+          ? formData.financeProviderOther.trim()
+          : formData.financeProviderName;
 
-      await AssetService.createAsset({
+      const assetLocationValue = formData.assetLocation.trim() || 'Not specified';
+
+      const assetPayload = {
         user_id: currentUser.uid,
         asset_name: formData.assetName.trim(),
         asset_type:
@@ -439,12 +501,12 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
             : (formData.assetType as any),
         asset_description: formData.assetDescription.trim() || undefined,
         asset_value: parseCurrency(formData.assetValue),
-        asset_location: formData.assetLocation.trim(),
+        asset_location: assetLocationValue,
         financing_status: financingStatus,
         finance_provider_type: financeProviderType,
         finance_provider_name:
           financingStatus === 'financed' && financeProviderType === 'bank'
-            ? formData.financeProviderName
+            ? resolvedBankName || undefined
             : undefined,
         finance_provider_other:
           financingStatus === 'financed' && financeProviderType === 'other'
@@ -456,7 +518,9 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
         paid_up_date:
           financingStatus === 'financed' ? formData.paidUpDate.trim() : undefined,
         is_active: true,
-      });
+      };
+
+      await AssetService.createAsset(assetPayload);
 
       setToastMessage('Asset added successfully!');
       setToastType('success');
@@ -473,7 +537,7 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
         }, 1500);
       }
     } catch (error: any) {
-      setToastMessage(error.message || 'Failed to save asset');
+      setToastMessage(error.message || 'Failed to save Asset');
       setToastType('error');
       setShowToast(true);
       setSaving(false);
@@ -528,7 +592,7 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
             <View style={styles.iconContainer}>
               <Ionicons name="home-outline" size={60} color={theme.colors.primary} />
             </View>
-            <Text style={styles.stepSubtitle}>Tell us about your asset</Text>
+            <Text style={styles.stepSubtitle}>Tell us about your Asset</Text>
 
             <TextInput
               style={styles.input}
@@ -559,7 +623,7 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
             {formData.assetType === 'other' && (
               <TextInput
                 style={styles.input}
-                placeholder="Specify asset type"
+                placeholder="Specify Asset type"
                 placeholderTextColor={theme.colors.placeholder}
                 value={formData.otherAssetType}
                 onChangeText={(value) => updateFormData('otherAssetType', value)}
@@ -591,7 +655,7 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
             <View style={styles.iconContainer}>
               <Ionicons name="information-circle-outline" size={60} color={theme.colors.primary} />
             </View>
-            <Text style={styles.stepSubtitle}>Additional information about your asset</Text>
+            <Text style={styles.stepSubtitle}>Additional information about your Asset</Text>
 
             <TextInput
               style={styles.input}
@@ -651,20 +715,48 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
                 </View>
 
                 {formData.financeProviderType === 'bank' && (
-                  <ScrollView style={styles.typeContainer} nestedScrollEnabled>
-                    {banksAndFintechs.map(bank => (
+                  <>
+                    {bankListCollapsed && formData.financeProviderName ? (
                       <TouchableOpacity
-                        key={bank}
-                        style={[
-                          styles.typeOption,
-                          formData.financeProviderName === bank && styles.typeOptionActive,
-                        ]}
-                        onPress={() => updateFormData('financeProviderName', bank)}
+                        style={styles.selectedBankPill}
+                        onPress={() => setBankListCollapsed(false)}
                       >
-                        <Text style={styles.typeText}>{bank}</Text>
+                        <Text style={styles.selectedBankText}>{formData.financeProviderName}</Text>
+                        <Ionicons
+                          name="chevron-down"
+                          size={18}
+                          color={theme.colors.primary}
+                        />
                       </TouchableOpacity>
-                    ))}
-                  </ScrollView>
+                    ) : (
+                      <ScrollView style={styles.typeContainer} nestedScrollEnabled>
+                        {banksAndFintechs.map(bank => (
+                          <TouchableOpacity
+                            key={bank}
+                            style={[
+                              styles.typeOption,
+                              formData.financeProviderName === bank && styles.typeOptionActive,
+                            ]}
+                            onPress={() => handleBankSelection(bank)}
+                          >
+                            <Text style={styles.typeText}>
+                              {bank === 'Other' ? 'Other (Specify)' : bank}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    )}
+
+                    {formData.financeProviderName === 'Other' && (
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Enter bank name"
+                        placeholderTextColor={theme.colors.placeholder}
+                        value={formData.financeProviderOther}
+                        onChangeText={(value) => updateFormData('financeProviderOther', value)}
+                      />
+                    )}
+                  </>
                 )}
 
                 {formData.financeProviderType === 'other' && (
@@ -679,7 +771,7 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
 
                 <TextInput
                   style={styles.input}
-                  placeholder="Repayment Term (e.g. 60 months)"
+                  placeholder="Repayment Term (e.g. 60 mths = 5 years)"
                   placeholderTextColor={theme.colors.placeholder}
                   value={formData.repaymentTerm}
                   onChangeText={(value) => updateFormData('repaymentTerm', value)}
@@ -702,14 +794,6 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
               value={formData.datePurchased}
               onChangeText={(value) => updateFormData('datePurchased', value)}
             />
-
-            <TextInput
-              style={styles.input}
-              placeholder="Location"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.assetLocation}
-              onChangeText={(value) => updateFormData('assetLocation', value)}
-            />
           </Animated.View>
         );
 
@@ -720,7 +804,7 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
             <View style={styles.iconContainer}>
               <Ionicons name="checkmark-circle-outline" size={60} color={theme.colors.primary} />
             </View>
-            <Text style={styles.stepSubtitle}>Review your asset information</Text>
+            <Text style={styles.stepSubtitle}>Review your Asset information</Text>
 
             <View style={styles.reviewContainer}>
               <View style={styles.reviewRow}>
@@ -745,12 +829,6 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
                 <View style={styles.reviewRow}>
                   <Text style={styles.reviewLabel}>Value:</Text>
                   <Text style={styles.reviewValue}>R {formData.assetValue}</Text>
-                </View>
-              )}
-              {formData.assetLocation && (
-                <View style={styles.reviewRow}>
-                  <Text style={styles.reviewLabel}>Location:</Text>
-                  <Text style={styles.reviewValue}>{formData.assetLocation}</Text>
                 </View>
               )}
               <View style={styles.reviewRow}>
@@ -799,11 +877,17 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => navigation.goBack()} disabled={saving}>
             <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Add Asset</Text>
-          <View style={{ width: 24 }} />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Dashboard')}
+            disabled={saving}
+            style={styles.homeButton}
+          >
+            <Ionicons name="home" size={24} color={theme.colors.primary} />
+          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -901,7 +985,7 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
             <Text style={styles.policyModalTitle}>Manage Policies Separately</Text>
             <Text style={styles.policyModalBody}>
               Policies have their own guided flow so we can capture insurer details, policy numbers, and beneficiary links correctly.
-              We’ll take you to the policy page now. You can return to add more assets afterwards.
+              We’ll take you to the policy page now. You can return to add more Assets afterwards.
             </Text>
             <View style={styles.policyModalButtons}>
               <TouchableOpacity
@@ -936,16 +1020,30 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
         <View style={styles.infoModalOverlay}>
           <View style={styles.policyModalContainer}>
             <Ionicons name="bulb-outline" size={42} color={theme.colors.primary} />
-            <Text style={styles.policyModalTitle}>Start with your assets</Text>
+            <Text style={styles.policyModalStartTitle}>Start</Text>
+            <Text style={styles.policyModalTitle}>Add Your Assets</Text>
             <Text style={styles.policyModalBody}>
-              Capture each asset’s value, location, and financing so we can keep your estate plan accurate. Once saved,
-              you’ll link beneficiaries right away.
+              First thing, add your assets. Specify if the asset is paid up or financed to estimate your estate value. Thereafter, link your beneficiaries to the assets.
             </Text>
             <TouchableOpacity
               style={styles.policyModalPrimary}
-              onPress={() => setShowFirstTimeModal(false)}
+              onPress={async () => {
+                if (dontShowFirstTimeAgain) {
+                  await setDontShowAgain('ADD_ASSET_FIRST_TIME');
+                }
+                setShowFirstTimeModal(false);
+              }}
             >
-              <Text style={styles.policyModalPrimaryText}>Let’s do it</Text>
+              <Text style={styles.policyModalPrimaryText}>Let's do it</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalCheckboxContainer}
+              onPress={() => setDontShowFirstTimeAgain(!dontShowFirstTimeAgain)}
+            >
+              <View style={[styles.modalCheckbox, dontShowFirstTimeAgain && styles.modalCheckboxChecked]}>
+                {dontShowFirstTimeAgain && <Text style={styles.modalCheckmark}>✓</Text>}
+              </View>
+              <Text style={styles.modalCheckboxText}>Don't show again</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -962,11 +1060,14 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
             <Ionicons name="people-circle-outline" size={42} color={theme.colors.primary} />
             <Text style={styles.policyModalTitle}>Link a beneficiary</Text>
             <Text style={styles.policyModalBody}>
-              Linking now ensures this asset is assigned to the right person in your will. You can always edit it later.
+              Linking now ensures this Asset is assigned to the right person in your Will. This is editable later.
             </Text>
             <TouchableOpacity
               style={styles.policyModalPrimary}
-              onPress={() => {
+              onPress={async () => {
+                if (dontShowLinkExplainerAgain) {
+                  await setDontShowAgain('ADD_ASSET_LINK_BENEFICIARY');
+                }
                 setShowLinkExplainerModal(false);
                 setLinkExplainerShown(true);
                 handleSaveAsset('link');
@@ -979,6 +1080,15 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
               onPress={() => setShowLinkExplainerModal(false)}
             >
               <Text style={styles.policyModalSecondaryText}>Not now</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalCheckboxContainer}
+              onPress={() => setDontShowLinkExplainerAgain(!dontShowLinkExplainerAgain)}
+            >
+              <View style={[styles.modalCheckbox, dontShowLinkExplainerAgain && styles.modalCheckboxChecked]}>
+                {dontShowLinkExplainerAgain && <Text style={styles.modalCheckmark}>✓</Text>}
+              </View>
+              <Text style={styles.modalCheckboxText}>Don't show again</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1007,6 +1117,14 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.xl,
     fontWeight: theme.typography.weights.bold as any,
     color: theme.colors.text,
+  },
+  homeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.primary + '12',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrollContent: {
     flexGrow: 1,
@@ -1055,6 +1173,23 @@ const styles = StyleSheet.create({
   typeContainer: {
     maxHeight: 200,
     marginBottom: theme.spacing.md,
+  },
+  selectedBankPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 56,
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.xl,
+    paddingHorizontal: theme.spacing.lg,
+    backgroundColor: theme.colors.surface,
+    marginBottom: theme.spacing.md,
+  },
+  selectedBankText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.weights.semibold as any,
   },
   typeOption: {
     backgroundColor: theme.colors.surface,
@@ -1243,6 +1378,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: theme.spacing.md,
   },
+  policyModalStartTitle: {
+    fontSize: theme.typography.sizes.xxxl,
+    fontWeight: theme.typography.weights.bold as any,
+    color: theme.colors.text,
+    textAlign: 'center',
+  },
   policyModalTitle: {
     fontSize: theme.typography.sizes.xl,
     fontWeight: theme.typography.weights.bold as any,
@@ -1284,6 +1425,37 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.md,
     color: theme.colors.buttonText,
     fontWeight: theme.typography.weights.semibold as any,
+  },
+  modalCheckboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  modalCheckbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.sm,
+    marginRight: theme.spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+  },
+  modalCheckboxChecked: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  modalCheckmark: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold' as any,
+  },
+  modalCheckboxText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
   },
 });
 

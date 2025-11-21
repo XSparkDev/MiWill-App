@@ -23,6 +23,7 @@ import { useAuth } from '../contexts/AuthContext';
 import WillService from '../services/willService';
 import { WillInformation } from '../types/will';
 import { WebView } from 'react-native-webview';
+import { shouldShowModal, setDontShowAgain } from '../utils/modalPreferences';
 
 interface UploadWillScreenProps {
   navigation: any;
@@ -250,7 +251,7 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
     {
       title: 'Beneficiaries',
       content:
-        'I bequeath my assets to the following beneficiaries:\n\n1. [Beneficiary Name] - [Relationship] - [Asset/Percentage]\n2. [Beneficiary Name] - [Relationship] - [Asset/Percentage]\n\nThese allocations are to be administered by my executor in accordance with South African estate law.',
+        'I bequeath my Assets to the following beneficiaries:\n\n1. [Beneficiary Name] - [Relationship] - [Asset/Percentage]\n2. [Beneficiary Name] - [Relationship] - [Asset/Percentage]\n\nThese allocations are to be administered by my executor in accordance with South African estate law.',
     },
     {
       title: 'Specific Wishes & Signatures',
@@ -288,15 +289,23 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
   };
 
   const [showFirstTimeGuidedModal, setShowFirstTimeGuidedModal] = useState(false);
+  const [dontShowWelcomeAgain, setDontShowWelcomeAgain] = useState(false);
   const [guidedFlowActive, setGuidedFlowActive] = useState(false);
   const guidedWillPulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (route?.params?.firstTimeGuidedFlow) {
-      setShowFirstTimeGuidedModal(true);
-      setGuidedFlowActive(true);
-      navigation.setParams?.({ firstTimeGuidedFlow: false });
-    }
+    const checkAndShowWelcomeModal = async () => {
+      if (route?.params?.firstTimeGuidedFlow) {
+        // Only show during first-time registration flow
+        const shouldShow = await shouldShowModal('UPLOAD_WILL_WELCOME');
+        if (shouldShow) {
+          setShowFirstTimeGuidedModal(true);
+          setGuidedFlowActive(true);
+        }
+        navigation.setParams?.({ firstTimeGuidedFlow: false });
+      }
+    };
+    checkAndShowWelcomeModal();
   }, [route?.params?.firstTimeGuidedFlow, navigation]);
 
   useEffect(() => {
@@ -1143,12 +1152,12 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.title}>How would you like to draft your will?</Text>
+          <Text style={styles.title}>How would you like to draft your Will?</Text>
           <View style={styles.iconContainer}>
             <Ionicons name="document-text-outline" size={60} color={theme.colors.primary} />
           </View>
           <Text style={styles.subtitle}>
-            You can follow Guided Will, record video or audio explaining your will
+            You can follow Guided Will, record video or audio explaining your Will
           </Text>
 
           {existingWills.length > 0 && (
@@ -1172,10 +1181,16 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
                 <Text style={styles.aiBadgeText}>Recommended</Text>
               </View>
               <Ionicons name="chatbubbles-outline" size={40} color={theme.colors.primary} />
-              <Text style={styles.optionText}>Guided Will</Text>
+              <Text style={styles.optionText}>Draft Will</Text>
               <Text style={styles.optionSubtext}>
-                Add your assets, create beneficiaries, and link them to the right items in an interactive flow.
+                (A guided Process to draft your Will.)
               </Text>
+              <View style={styles.guidedStepsContainer}>
+                <Text style={styles.guidedStepItem}>1. Add your assets</Text>
+                <Text style={styles.guidedStepItem}>2. Add beneficiaries</Text>
+                <Text style={styles.guidedStepItem}>3. Link beneficiaries to Assets</Text>
+                <Text style={styles.guidedStepItem}>4. Auto-Will output</Text>
+              </View>
             </TouchableOpacity>
           </Animated.View>
 
@@ -1215,7 +1230,7 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
               {isRecording ? 'Stop Recording' : 'Record Audio'}
             </Text>
             <Text style={styles.optionSubtext}>
-              {isRecording ? 'Recording in progress...' : 'Record your will'}
+              {isRecording ? 'Recording in progress...' : 'Record your Will'}
             </Text>
             {selectedAudio && !isRecording && uploadType === 'audio' && (
               <Text style={styles.selectedFile}>{selectedAudio.name || 'Audio recorded'}</Text>
@@ -1227,7 +1242,7 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
               <Ionicons name="checkmark-circle" size={24} color={theme.colors.success} />
               <Text style={styles.infoText}>
                 {uploadType === 'file'
-                  ? 'Document selected and ready to upload. Your will document will be securely stored and encrypted.'
+                  ? 'Document selected and ready to upload. Your Will document is securely stored and encrypted.'
                   : uploadType === 'video'
                   ? 'Video selected and ready to upload. Your video will be securely stored. Make sure it clearly states who receives what.'
                   : 'Audio selected and ready to upload. Your audio will be securely stored. Make sure it clearly states who receives what.'}
@@ -1235,7 +1250,11 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
             </View>
           )}
 
-          <TouchableOpacity style={[styles.optionButton, styles.aiOptionButton]} onPress={openAiAssistant}>
+          <TouchableOpacity
+            style={[styles.optionButton, styles.aiOptionButton, styles.aiOptionButtonDisabled]}
+            onPress={openAiAssistant}
+            disabled
+          >
             <View style={styles.aiBadge}>
               <Ionicons name="sparkles-outline" size={18} color={theme.colors.buttonText} />
               <Text style={styles.aiBadgeText}>Future Feature</Text>
@@ -1276,7 +1295,7 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
               disabled
             >
               <Text style={styles.saveButtonText}>
-                Select a file to continue
+                Continue
               </Text>
             </TouchableOpacity>
           )}
@@ -1302,7 +1321,7 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
                 <View style={styles.aiModalHeaderText}>
                   <Text style={styles.aiModalTitle}>AI Will Assistant</Text>
                   <Text style={styles.aiModalSubtitle}>
-                    Guided editing experience to help refine or draft your will for future AI assistance.
+                    Guided editing experience to help refine or draft your Will for future AI assistance.
                   </Text>
                 </View>
               </View>
@@ -1338,7 +1357,7 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
                     style={styles.aiEditorInput}
                     multiline
                     textAlignVertical="top"
-                    placeholder="Start drafting your will content here..."
+                    placeholder="Start drafting your Will content here..."
                     placeholderTextColor={theme.colors.placeholder}
                     value={aiSections[aiCurrentStep]?.content || ''}
                     onChangeText={updateCurrentAiSection}
@@ -1390,19 +1409,33 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Ionicons name="sparkles" size={32} color={theme.colors.primary} />
-            <Text style={styles.modalTitle}>Welcome to Guided Will</Text>
+            <Text style={styles.modalTitle}>Welcome to MiWill</Text>
+            <Text style={styles.modalSubtitle}>(or should we say your Will)</Text>
             <Text style={styles.modalBody}>
-              Guided Will steps you through recording every asset and policy, then helps you link beneficiaries so nothing
-              is missed. We recommend starting here after registration.
+              A guided process on how to draft your will.
             </Text>
-            <Text style={styles.modalBody}>
-              You can still come back to record a video or audio message later. Tap Guided Will to begin setting up your estate.
+            <Text style={styles.modalStepText}>
+              Step 1: Close the this popup and click on the pulsing button.
             </Text>
             <TouchableOpacity
               style={styles.modalCloseButton}
-              onPress={() => setShowFirstTimeGuidedModal(false)}
+              onPress={async () => {
+                if (dontShowWelcomeAgain) {
+                  await setDontShowAgain('UPLOAD_WILL_WELCOME');
+                }
+                setShowFirstTimeGuidedModal(false);
+              }}
             >
               <Text style={styles.modalCloseText}>Got it</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalCheckboxContainer}
+              onPress={() => setDontShowWelcomeAgain(!dontShowWelcomeAgain)}
+            >
+              <View style={[styles.modalCheckbox, dontShowWelcomeAgain && styles.modalCheckboxChecked]}>
+                {dontShowWelcomeAgain && <Text style={styles.modalCheckmark}>✓</Text>}
+              </View>
+              <Text style={styles.modalCheckboxText}>Don't show again</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1638,8 +1671,8 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
               </Text>
               <Text style={styles.transcribeModalText}>
                 {transcribeWillType === 'document'
-                  ? 'This makes your will more accessible and easier to understand for your beneficiaries.'
-                  : 'This feature uses advanced speech recognition technology to accurately capture your spoken will.'}
+                  ? 'This makes your Will more accessible and easier to understand for your beneficiaries.'
+                  : 'This feature uses advanced speech recognition technology to accurately capture your spoken Will.'}
               </Text>
               <View style={styles.transcribeFeatureList}>
                 {transcribeWillType === 'document' ? (
@@ -1914,6 +1947,11 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.primary,
     backgroundColor: theme.colors.primary + '10',
   },
+  aiOptionButtonDisabled: {
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.border + '40',
+    opacity: 0.6,
+  },
   optionButtonActive: {
     borderColor: theme.colors.error,
     backgroundColor: theme.colors.error + '10',
@@ -1945,6 +1983,17 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.textSecondary,
     textAlign: 'center',
+  },
+  guidedStepsContainer: {
+    marginTop: theme.spacing.md,
+    width: '100%',
+    alignItems: 'flex-start',
+  },
+  guidedStepItem: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+    textAlign: 'left',
   },
   existingWillSection: {
     width: '100%',
@@ -2198,11 +2247,27 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     textAlign: 'center',
   },
-  modalBody: {
+  modalSubtitle: {
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.textSecondary,
     textAlign: 'center',
+    marginTop: 0,
+    marginBottom: theme.spacing.md,
+    fontStyle: 'italic',
+  },
+  modalBody: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
     lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+  },
+  modalStepText: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.bold as any,
+    color: theme.colors.primary,
+    textAlign: 'center',
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
   },
   modalCloseButton: {
     alignSelf: 'stretch',
@@ -2215,6 +2280,37 @@ const styles = StyleSheet.create({
     color: theme.colors.buttonText,
     fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.semibold as any,
+  },
+  modalCheckboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  modalCheckbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.sm,
+    marginRight: theme.spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+  },
+  modalCheckboxChecked: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  modalCheckmark: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold' as any,
+  },
+  modalCheckboxText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
   },
   aiModalContainer: {
     width: '100%',

@@ -20,6 +20,7 @@ import { useAuth } from '../contexts/AuthContext';
 import PolicyService from '../services/policyService';
 import Toast from '../components/Toast';
 import { formatCurrencyInput, parseCurrency } from '../utils/currencyFormatter';
+import { shouldShowModal, setDontShowAgain } from '../utils/modalPreferences';
 
 const { width } = Dimensions.get('window');
 
@@ -63,7 +64,9 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
   const [infoModalVisible, setInfoModalVisible] = useState(false);
   const [infoModalContent, setInfoModalContent] = useState<{ title: string; subtitle: string } | null>(null);
   const [showFirstTimeModal, setShowFirstTimeModal] = useState(false);
+  const [dontShowFirstTimeAgain, setDontShowFirstTimeAgain] = useState(false);
   const [showLinkExplainerModal, setShowLinkExplainerModal] = useState(false);
+  const [dontShowLinkExplainerAgain, setDontShowLinkExplainerAgain] = useState(false);
   const [linkExplainerShown, setLinkExplainerShown] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -78,11 +81,32 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
   const totalSteps = 3;
   const fromGuidedWill = route?.params?.fromGuidedWill ?? false;
 
+  // Show modal every time user enters the screen
   useEffect(() => {
-    if (route?.params?.showFirstTimeExplainer) {
-      setShowFirstTimeModal(true);
-    }
-  }, [route?.params?.showFirstTimeExplainer]);
+    const checkAndShowModal = async () => {
+      try {
+        const shouldShow = await shouldShowModal('ADD_POLICY_FIRST_TIME');
+        console.log('[AddPolicyScreen] Should show first time modal:', shouldShow);
+        if (shouldShow) {
+          setShowFirstTimeModal(true);
+        }
+      } catch (error) {
+        console.error('[AddPolicyScreen] Error checking modal preference:', error);
+        // Default to showing modal on error
+        setShowFirstTimeModal(true);
+      }
+    };
+    
+    // Check on mount
+    checkAndShowModal();
+    
+    // Check on focus
+    const unsubscribe = navigation.addListener('focus', () => {
+      checkAndShowModal();
+    });
+    
+    return unsubscribe;
+  }, [navigation]);
 
   const updateFormData = (field: string, value: string) => {
     if (field === 'policyValue') {
@@ -113,9 +137,15 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
     setInfoModalContent(null);
   };
 
-  const handleLinkBeneficiaryRequest = () => {
+  const handleLinkBeneficiaryRequest = async () => {
     if (fromGuidedWill && !linkExplainerShown) {
-      setShowLinkExplainerModal(true);
+      const shouldShow = await shouldShowModal('ADD_POLICY_LINK_BENEFICIARY');
+      if (shouldShow) {
+        setShowLinkExplainerModal(true);
+      } else {
+        setLinkExplainerShown(true);
+        handleSavePolicy('link');
+      }
     } else {
       handleSavePolicy('link');
     }
@@ -125,12 +155,6 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
     if (currentStep < totalSteps - 1) {
       // Validate required fields before proceeding
       if (currentStep === 0) {
-        if (!formData.policyNumber.trim()) {
-          setToastMessage('Please enter a policy number');
-          setToastType('error');
-          setShowToast(true);
-          return;
-        }
         if (!formData.policyType) {
           setToastMessage('Please select a policy type');
           setToastType('error');
@@ -138,7 +162,7 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
           return;
         }
         if (!formData.insuranceCompany.trim()) {
-          setToastMessage('Please enter an insurance company');
+          setToastMessage('Please enter an Insurer');
           setToastType('error');
           setShowToast(true);
           return;
@@ -299,7 +323,7 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
 
             <TextInput
               style={styles.input}
-              placeholder="Insurance Company"
+              placeholder="Insurer"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.insuranceCompany}
               onChangeText={(value) => updateFormData('insuranceCompany', value)}
@@ -312,6 +336,9 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
               value={formData.policyNumber}
               onChangeText={(value) => updateFormData('policyNumber', value)}
             />
+            <Text style={styles.optionalNote}>
+              You can add your policy number later from the dashboard.
+            </Text>
 
             <Text style={styles.label}>Policy Type</Text>
             <ScrollView style={styles.typeContainer} nestedScrollEnabled>
@@ -391,7 +418,9 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
             <View style={styles.reviewContainer}>
               <View style={styles.reviewRow}>
                 <Text style={styles.reviewLabel}>Policy Number:</Text>
-                <Text style={styles.reviewValue}>{formData.policyNumber}</Text>
+                <Text style={styles.reviewValue}>
+                  {formData.policyNumber.trim() || 'Add later'}
+                </Text>
               </View>
               <View style={styles.reviewRow}>
                 <Text style={styles.reviewLabel}>Type:</Text>
@@ -433,11 +462,17 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => navigation.goBack()} disabled={saving}>
             <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Add Policy</Text>
-          <View style={{ width: 24 }} />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Dashboard')}
+            disabled={saving}
+            style={styles.homeButton}
+          >
+            <Ionicons name="home" size={24} color={theme.colors.primary} />
+          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -537,8 +572,22 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
               Capture the policy number, insurer, and value so we can link beneficiaries immediately after saving.
             </Text>
             <TouchableOpacity
+              style={styles.modalCheckboxContainer}
+              onPress={() => setDontShowFirstTimeAgain(!dontShowFirstTimeAgain)}
+            >
+              <View style={[styles.modalCheckbox, dontShowFirstTimeAgain && styles.modalCheckboxChecked]}>
+                {dontShowFirstTimeAgain && <Text style={styles.modalCheckmark}>✓</Text>}
+              </View>
+              <Text style={styles.modalCheckboxText}>Don't show again</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={styles.modalCloseButton}
-              onPress={() => setShowFirstTimeModal(false)}
+              onPress={async () => {
+                if (dontShowFirstTimeAgain) {
+                  await setDontShowAgain('ADD_POLICY_FIRST_TIME');
+                }
+                setShowFirstTimeModal(false);
+              }}
             >
               <Text style={styles.modalCloseText}>Understood</Text>
             </TouchableOpacity>
@@ -560,8 +609,20 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
               Linking now ensures this policy payout reaches the right person. You can adjust beneficiaries later if anything changes.
             </Text>
             <TouchableOpacity
+              style={styles.modalCheckboxContainer}
+              onPress={() => setDontShowLinkExplainerAgain(!dontShowLinkExplainerAgain)}
+            >
+              <View style={[styles.modalCheckbox, dontShowLinkExplainerAgain && styles.modalCheckboxChecked]}>
+                {dontShowLinkExplainerAgain && <Text style={styles.modalCheckmark}>✓</Text>}
+              </View>
+              <Text style={styles.modalCheckboxText}>Don't show again</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={styles.modalCloseButton}
-              onPress={() => {
+              onPress={async () => {
+                if (dontShowLinkExplainerAgain) {
+                  await setDontShowAgain('ADD_POLICY_LINK_BENEFICIARY');
+                }
                 setShowLinkExplainerModal(false);
                 setLinkExplainerShown(true);
                 handleSavePolicy('link');
@@ -603,6 +664,14 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.weights.bold as any,
     color: theme.colors.text,
   },
+  homeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.primary + '12',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: theme.spacing.xl,
@@ -639,6 +708,12 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.md,
     color: theme.colors.text,
     backgroundColor: theme.colors.inputBackground,
+    marginBottom: theme.spacing.md,
+  },
+  optionalNote: {
+    fontSize: theme.typography.sizes.xs,
+    color: theme.colors.textSecondary,
+    marginTop: -theme.spacing.xs / 2,
     marginBottom: theme.spacing.md,
   },
   label: {
@@ -800,6 +875,37 @@ const styles = StyleSheet.create({
     color: theme.colors.buttonText,
     fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.semibold as any,
+  },
+  modalCheckboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  modalCheckbox: {
+    width: 20,
+    height: 20,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.sm,
+    marginRight: theme.spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+  },
+  modalCheckboxChecked: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  modalCheckmark: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold' as any,
+  },
+  modalCheckboxText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
   },
   modalBackButton: {
     alignSelf: 'flex-end',

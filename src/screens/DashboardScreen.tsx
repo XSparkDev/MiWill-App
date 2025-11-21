@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,43 @@ import { BeneficiaryInformation } from '../types/beneficiary';
 import { NotificationInformation } from '../types/notification';
 import { formatSAPhoneNumber, isValidSAPhoneNumber } from '../utils/phoneFormatter';
 
+const relationshipOptions = [
+  { label: 'Spouse', value: 'spouse' },
+  { label: 'Partner', value: 'partner' },
+  { label: 'Fiancé / Fiancée', value: 'fiance' },
+  { label: 'Child', value: 'child' },
+  { label: 'Parent', value: 'parent' },
+  { label: 'Stepparent', value: 'stepparent' },
+  { label: 'Stepchild', value: 'stepchild' },
+  { label: 'Sibling', value: 'sibling' },
+  { label: 'Half-Sibling', value: 'half_sibling' },
+  { label: 'Grandparent', value: 'grandparent' },
+  { label: 'Grandchild', value: 'grandchild' },
+  { label: 'Aunt', value: 'aunt' },
+  { label: 'Uncle', value: 'uncle' },
+  { label: 'Niece', value: 'niece' },
+  { label: 'Nephew', value: 'nephew' },
+  { label: 'Cousin', value: 'cousin' },
+  { label: 'Guardian', value: 'guardian' },
+  { label: 'Ward', value: 'ward' },
+  { label: 'Friend', value: 'friend' },
+  { label: 'Neighbour', value: 'neighbour' },
+  { label: 'Mentor', value: 'mentor' },
+  { label: 'Mentee', value: 'mentee' },
+  { label: 'Colleague', value: 'colleague' },
+  { label: 'Business Partner', value: 'business_partner' },
+  { label: 'Employer', value: 'employer' },
+  { label: 'Employee', value: 'employee' },
+  { label: 'Caregiver', value: 'caregiver' },
+  { label: 'Pastor / Spiritual Leader', value: 'pastor' },
+  { label: 'Financial Advisor', value: 'financial_advisor' },
+  { label: 'Legal Advisor', value: 'legal_advisor' },
+  { label: 'Doctor', value: 'doctor' },
+  { label: 'Therapist', value: 'therapist' },
+  { label: 'Coach', value: 'coach' },
+  { label: 'Other', value: 'other' },
+];
+
 interface DashboardScreenProps {
   navigation: any;
 }
@@ -54,6 +91,10 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     useState<Record<string, BeneficiaryInformation[]>>({});
   const [policyBeneficiaries, setPolicyBeneficiaries] =
     useState<Record<string, BeneficiaryInformation[]>>({});
+  const [assetBeneficiaryPercentages, setAssetBeneficiaryPercentages] =
+    useState<Record<string, Record<string, number>>>({});
+  const [policyBeneficiaryPercentages, setPolicyBeneficiaryPercentages] =
+    useState<Record<string, Record<string, number>>>({});
   const [expandedAssets, setExpandedAssets] = useState<Record<string, boolean>>({});
   const [expandedPolicies, setExpandedPolicies] = useState<Record<string, boolean>>({});
   const [selectedManagement, setSelectedManagement] = useState<'assets' | null>(null);
@@ -74,6 +115,9 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     phone: '',
   });
   const [inlineSaving, setInlineSaving] = useState(false);
+  const [inlineRelationshipDropdownVisible, setInlineRelationshipDropdownVisible] = useState(false);
+  const [inlineRelationshipOption, setInlineRelationshipOption] = useState<string>('');
+  const inlineRelationshipInputRef = useRef<TextInput | null>(null);
   const [showBeneficiarySelectionModal, setShowBeneficiarySelectionModal] = useState(false);
   const [beneficiarySelectionTarget, setBeneficiarySelectionTarget] =
     useState<{ type: 'asset' | 'policy'; id: string } | null>(null);
@@ -252,6 +296,15 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         {}
       );
       setAssetBeneficiaries(assetBeneficiariesMap);
+      
+      // Fetch allocation percentages for assets
+      const assetPercentagesMap: Record<string, Record<string, number>> = {};
+      for (const asset of userAssets) {
+        const percentages = await BeneficiaryService.getAssetBeneficiaryLinks(asset.asset_id);
+        assetPercentagesMap[asset.asset_id] = percentages;
+      }
+      setAssetBeneficiaryPercentages(assetPercentagesMap);
+      
       setExpandedAssets(prev =>
         userAssets.reduce<Record<string, boolean>>((acc, asset) => {
           acc[asset.asset_id] = prev[asset.asset_id] || false;
@@ -270,6 +323,15 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         {}
       );
       setPolicyBeneficiaries(policyBeneficiariesMap);
+      
+      // Fetch allocation percentages for policies
+      const policyPercentagesMap: Record<string, Record<string, number>> = {};
+      for (const policy of userPolicies) {
+        const percentages = await BeneficiaryService.getPolicyBeneficiaryLinks(policy.policy_id);
+        policyPercentagesMap[policy.policy_id] = percentages;
+      }
+      setPolicyBeneficiaryPercentages(policyPercentagesMap);
+      
       setExpandedPolicies(prev =>
         userPolicies.reduce<Record<string, boolean>>((acc, policy) => {
           acc[policy.policy_id] = prev[policy.policy_id] || false;
@@ -354,6 +416,8 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       email: '',
       phone: '',
     });
+    setInlineRelationshipOption('');
+    setInlineRelationshipDropdownVisible(false);
   };
 
   const handleSelectExistingBeneficiary = async (beneficiary: BeneficiaryInformation) => {
@@ -374,12 +438,18 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         return;
       }
 
+      // Calculate allocation percentage based on existing beneficiaries
+      const existingCount = existing.length;
+      const newCount = existingCount + 1;
+      const allocationPercentage = newCount === 1 ? 100 : 100 / newCount;
+      const roundedAllocation = Math.round(allocationPercentage * 100) / 100;
+
       // Link the beneficiary
       if (beneficiarySelectionTarget.type === 'asset') {
         await BeneficiaryService.linkAssetToBeneficiary(
           beneficiarySelectionTarget.id,
           beneficiary.beneficiary_id,
-          100,
+          roundedAllocation,
           'equal_split'
         );
         setAssetBeneficiaries(prev => ({
@@ -389,12 +459,18 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             beneficiary,
           ],
         }));
+        // Update percentages
+        const percentages = await BeneficiaryService.getAssetBeneficiaryLinks(beneficiarySelectionTarget.id);
+        setAssetBeneficiaryPercentages(prev => ({
+          ...prev,
+          [beneficiarySelectionTarget.id]: percentages,
+        }));
         setExpandedAssets(prev => ({ ...prev, [beneficiarySelectionTarget.id]: true }));
       } else {
         await BeneficiaryService.linkPolicyToBeneficiary(
           beneficiarySelectionTarget.id,
           beneficiary.beneficiary_id,
-          100,
+          roundedAllocation,
           'equal_split'
         );
         setPolicyBeneficiaries(prev => ({
@@ -403,6 +479,12 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             ...(prev[beneficiarySelectionTarget.id] || []),
             beneficiary,
           ],
+        }));
+        // Update percentages
+        const percentages = await BeneficiaryService.getPolicyBeneficiaryLinks(beneficiarySelectionTarget.id);
+        setPolicyBeneficiaryPercentages(prev => ({
+          ...prev,
+          [beneficiarySelectionTarget.id]: percentages,
         }));
         setExpandedPolicies(prev => ({ ...prev, [beneficiarySelectionTarget.id]: true }));
       }
@@ -427,6 +509,21 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       email: '',
       phone: '',
     });
+    setInlineRelationshipOption('');
+    setInlineRelationshipDropdownVisible(false);
+  };
+
+  const handleSelectInlineRelationship = (optionValue: string, label: string) => {
+    setInlineRelationshipOption(optionValue);
+    if (optionValue === 'other') {
+      updateInlineForm('relationship', '');
+      setTimeout(() => {
+        inlineRelationshipInputRef.current?.focus();
+      }, 150);
+    } else {
+      updateInlineForm('relationship', label);
+    }
+    setInlineRelationshipDropdownVisible(false);
   };
 
   const updateInlineForm = (field: keyof typeof inlineForm, value: string) => {
@@ -818,13 +915,67 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         value={inlineForm.surname}
         onChangeText={value => updateInlineForm('surname', value)}
       />
-      <TextInput
-        style={styles.inlineInput}
-        placeholder="Relationship"
-        placeholderTextColor={theme.colors.placeholder}
-        value={inlineForm.relationship}
-        onChangeText={value => updateInlineForm('relationship', value)}
-      />
+      <View
+        style={[
+          styles.dropdownWrapper,
+          inlineRelationshipDropdownVisible && styles.dropdownWrapperExpanded,
+        ]}
+      >
+        <TouchableOpacity
+          style={[styles.inlineInput, styles.dropdownInput]}
+          onPress={() => setInlineRelationshipDropdownVisible(prev => !prev)}
+        >
+          <Text
+            style={
+              inlineForm.relationship || inlineRelationshipOption
+                ? styles.dropdownSelectedText
+                : styles.dropdownPlaceholder
+            }
+          >
+            {inlineRelationshipOption === 'other' && inlineForm.relationship
+              ? inlineForm.relationship
+              : inlineRelationshipOption
+              ? relationshipOptions.find(opt => opt.value === inlineRelationshipOption)?.label || 'Select relationship'
+              : inlineForm.relationship || 'Select relationship'}
+          </Text>
+          <Ionicons
+            name={inlineRelationshipDropdownVisible ? 'chevron-up' : 'chevron-down'}
+            size={20}
+            color={theme.colors.textSecondary}
+          />
+        </TouchableOpacity>
+        {inlineRelationshipDropdownVisible && (
+          <View style={styles.dropdownList}>
+            <ScrollView
+              style={styles.dropdownScroll}
+              nestedScrollEnabled
+              showsVerticalScrollIndicator
+              contentContainerStyle={styles.dropdownListContent}
+            >
+              {relationshipOptions.map(option => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={styles.dropdownOption}
+                  onPress={() => handleSelectInlineRelationship(option.value, option.label)}
+                >
+                  <Text style={styles.dropdownOptionText}>{option.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+      </View>
+
+      {inlineRelationshipOption === 'other' && (
+        <TextInput
+          ref={inlineRelationshipInputRef}
+          style={styles.inlineInput}
+          placeholder="State Other relationship"
+          placeholderTextColor={theme.colors.placeholder}
+          value={inlineForm.relationship}
+          onChangeText={value => updateInlineForm('relationship', value)}
+        />
+      )}
       <TextInput
         style={styles.inlineInput}
         placeholder="Email (optional)"
@@ -925,14 +1076,22 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           <View style={styles.managementContent}>
             {linked.length > 0 ? (
               <View style={styles.linkedList}>
-                {linked.map(ben => (
-                  <View key={ben.beneficiary_id} style={styles.linkedItemRow}>
-                    <Text style={styles.linkedItem}>• {ben.beneficiary_name}</Text>
-                    <TouchableOpacity onPress={() => handleDelinkBeneficiary('asset', asset.asset_id, ben)}>
-                      <Ionicons name="close-circle" size={28} color={theme.colors.error} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                {linked.map(ben => {
+                  const percentage = assetBeneficiaryPercentages[asset.asset_id]?.[ben.beneficiary_id] || 0;
+                  return (
+                    <View key={ben.beneficiary_id} style={styles.linkedItemRow}>
+                      <View style={styles.linkedItemContainer}>
+                        <Text style={styles.linkedItem}>• {ben.beneficiary_name}</Text>
+                        {percentage > 0 && (
+                          <Text style={styles.linkedItemPercentage}>{percentage}%</Text>
+                        )}
+                      </View>
+                      <TouchableOpacity onPress={() => handleDelinkBeneficiary('asset', asset.asset_id, ben)}>
+                        <Ionicons name="close-circle" size={28} color={theme.colors.error} />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
               </View>
             ) : (
               <Text style={styles.linkedEmpty}>No beneficiaries linked yet.</Text>
@@ -960,12 +1119,14 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           onPress={() => togglePolicyRow(policy.policy_id)}
           activeOpacity={0.8}
         >
-          <View style={styles.managementHeaderLeft}>
-            <Text style={styles.managementCardTitle}>{policy.policy_number}</Text>
-            <Text style={styles.managementCardSubtitle}>
-              {policy.insurance_company} · {policy.policy_type.replace('_', ' ')}
-            </Text>
-          </View>
+        <View style={styles.managementHeaderLeft}>
+          <Text style={styles.managementCardTitle}>
+            {policy.policy_type.replace('_', ' ')}
+          </Text>
+          <Text style={styles.managementCardSubtitle}>
+            {policy.insurance_company} · {policy.policy_number}
+          </Text>
+        </View>
           <View style={styles.managementHeaderActions}>
             <TouchableOpacity
               style={styles.managementIconButton}
@@ -1002,14 +1163,22 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           <View style={styles.managementContent}>
             {linked.length > 0 ? (
               <View style={styles.linkedList}>
-                {linked.map(ben => (
-                  <View key={ben.beneficiary_id} style={styles.linkedItemRow}>
-                    <Text style={styles.linkedItem}>• {ben.beneficiary_name}</Text>
-                    <TouchableOpacity onPress={() => handleDelinkBeneficiary('policy', policy.policy_id, ben)}>
-                      <Ionicons name="close-circle" size={28} color={theme.colors.error} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                {linked.map(ben => {
+                  const percentage = policyBeneficiaryPercentages[policy.policy_id]?.[ben.beneficiary_id] || 0;
+                  return (
+                    <View key={ben.beneficiary_id} style={styles.linkedItemRow}>
+                      <View style={styles.linkedItemContainer}>
+                        <Text style={styles.linkedItem}>• {ben.beneficiary_name}</Text>
+                        {percentage > 0 && (
+                          <Text style={styles.linkedItemPercentage}>{percentage}%</Text>
+                        )}
+                      </View>
+                      <TouchableOpacity onPress={() => handleDelinkBeneficiary('policy', policy.policy_id, ben)}>
+                        <Ionicons name="close-circle" size={28} color={theme.colors.error} />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
               </View>
             ) : (
               <Text style={styles.linkedEmpty}>No beneficiaries linked yet.</Text>
@@ -2134,11 +2303,23 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: theme.spacing.xs,
   },
+  linkedItemContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   linkedItem: {
     fontSize: theme.typography.sizes.lg,
     color: theme.colors.text,
     flex: 1,
     fontWeight: theme.typography.weights.medium as any,
+  },
+  linkedItemPercentage: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.weights.semibold as any,
+    marginLeft: theme.spacing.sm,
   },
   linkedEmpty: {
     fontSize: theme.typography.sizes.sm,
@@ -2167,6 +2348,64 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.sm,
     color: theme.colors.text,
     backgroundColor: theme.colors.background,
+  },
+  dropdownWrapper: {
+    position: 'relative',
+    marginBottom: theme.spacing.sm,
+  },
+  dropdownWrapperExpanded: {
+    paddingBottom: 160,
+  },
+  dropdownInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 0,
+  },
+  dropdownPlaceholder: {
+    color: theme.colors.placeholder,
+    fontSize: theme.typography.sizes.md,
+  },
+  dropdownSelectedText: {
+    color: theme.colors.text,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.medium as any,
+  },
+  dropdownList: {
+    position: 'absolute',
+    top: 52,
+    left: 0,
+    right: 0,
+    backgroundColor: theme.colors.surface,
+    opacity: 1,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    zIndex: 20,
+    elevation: 4,
+    shadowColor: '#00000033',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    maxHeight: 160,
+    overflow: 'hidden',
+  },
+  dropdownListContent: {
+    paddingVertical: theme.spacing.xs,
+    backgroundColor: theme.colors.surface,
+  },
+  dropdownScroll: {
+    backgroundColor: theme.colors.surface,
+  },
+  dropdownOption: {
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderLight,
+  },
+  dropdownOptionText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.text,
   },
   inlineActions: {
     flexDirection: 'row',

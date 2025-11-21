@@ -177,7 +177,7 @@ export class BeneficiaryService {
   }
 
   /**
-   * Get beneficiaries linked to a specific asset
+   * Get beneficiaries linked to a specific asset with allocation percentages
    */
   static async getBeneficiariesForAsset(assetId: string): Promise<BeneficiaryInformation[]> {
     try {
@@ -187,24 +187,76 @@ export class BeneficiaryService {
       );
       const linkSnapshot = await getDocs(q);
       
-      const beneficiaryIds = linkSnapshot.docs.map(doc => doc.data().beneficiary_id);
-      
-      if (beneficiaryIds.length === 0) {
+      if (linkSnapshot.docs.length === 0) {
         return [];
       }
       
-      // Fetch beneficiaries
+      // Fetch beneficiaries with their allocation percentages
       const beneficiaries: BeneficiaryInformation[] = [];
-      for (const beneficiaryId of beneficiaryIds) {
+      for (const linkDoc of linkSnapshot.docs) {
+        const linkData = linkDoc.data();
+        const beneficiaryId = linkData.beneficiary_id;
+        const allocationPercentage = linkData.allocation_percentage || 0;
+        
         const beneficiary = await this.getBeneficiaryById(beneficiaryId);
         if (beneficiary) {
-          beneficiaries.push(beneficiary);
+          // Add allocation percentage to beneficiary object
+          beneficiaries.push({
+            ...beneficiary,
+            beneficiary_percentage: allocationPercentage,
+          });
         }
       }
       
       return beneficiaries;
     } catch (error: any) {
       throw new Error(`Failed to get beneficiaries for asset: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Get asset beneficiary links with percentages (for Dashboard display)
+   */
+  static async getAssetBeneficiaryLinks(assetId: string): Promise<Record<string, number>> {
+    try {
+      const q = query(
+        collection(db, this.assetLinksCollection),
+        where('asset_id', '==', assetId)
+      );
+      const linkSnapshot = await getDocs(q);
+      
+      const percentages: Record<string, number> = {};
+      linkSnapshot.docs.forEach(doc => {
+        const linkData = doc.data();
+        percentages[linkData.beneficiary_id] = linkData.allocation_percentage || 0;
+      });
+      
+      return percentages;
+    } catch (error: any) {
+      throw new Error(`Failed to get asset beneficiary links: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Get policy beneficiary links with percentages (for Dashboard display)
+   */
+  static async getPolicyBeneficiaryLinks(policyId: string): Promise<Record<string, number>> {
+    try {
+      const q = query(
+        collection(db, this.policyLinksCollection),
+        where('policy_id', '==', policyId)
+      );
+      const linkSnapshot = await getDocs(q);
+      
+      const percentages: Record<string, number> = {};
+      linkSnapshot.docs.forEach(doc => {
+        const linkData = doc.data();
+        percentages[linkData.beneficiary_id] = linkData.allocation_percentage || 0;
+      });
+      
+      return percentages;
+    } catch (error: any) {
+      throw new Error(`Failed to get policy beneficiary links: ${error.message}`);
     }
   }
 
@@ -237,6 +289,69 @@ export class BeneficiaryService {
       return beneficiaries;
     } catch (error: any) {
       throw new Error(`Failed to get beneficiaries for policy: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update allocation percentage for an asset-beneficiary link
+   */
+  static async updateAssetBeneficiaryAllocation(
+    assetId: string,
+    beneficiaryId: string,
+    allocationPercentage: number
+  ): Promise<void> {
+    try {
+      const q = query(
+        collection(db, this.assetLinksCollection),
+        where('asset_id', '==', assetId),
+        where('beneficiary_id', '==', beneficiaryId)
+      );
+      const linkSnapshot = await getDocs(q);
+      
+      if (linkSnapshot.docs.length === 0) {
+        throw new Error('Link not found');
+      }
+      
+      const updatePromises = linkSnapshot.docs.map(doc =>
+        updateDoc(doc.ref, {
+          allocation_percentage: allocationPercentage,
+          updated_at: Timestamp.now(),
+        })
+      );
+      await Promise.all(updatePromises);
+    } catch (error: any) {
+      throw new Error(`Failed to update asset beneficiary allocation: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Redistribute allocation percentages for all beneficiaries linked to an asset
+   */
+  static async redistributeAssetAllocations(
+    assetId: string,
+    percentages: Record<string, number>
+  ): Promise<void> {
+    try {
+      const q = query(
+        collection(db, this.assetLinksCollection),
+        where('asset_id', '==', assetId)
+      );
+      const linkSnapshot = await getDocs(q);
+      
+      const updatePromises = linkSnapshot.docs.map(doc => {
+        const linkData = doc.data();
+        const beneficiaryId = linkData.beneficiary_id;
+        const newPercentage = percentages[beneficiaryId] || 0;
+        
+        return updateDoc(doc.ref, {
+          allocation_percentage: newPercentage,
+          updated_at: Timestamp.now(),
+        });
+      });
+      
+      await Promise.all(updatePromises);
+    } catch (error: any) {
+      throw new Error(`Failed to redistribute asset allocations: ${error.message}`);
     }
   }
 

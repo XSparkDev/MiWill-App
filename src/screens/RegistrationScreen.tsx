@@ -27,7 +27,7 @@ import AttorneyService from '../services/attorneyService';
 import ExecutorService from '../services/executorService';
 import SecondaryContactService from '../services/secondaryContactService';
 import NotificationService from '../services/notificationService';
-import { formatSAPhoneNumber, isValidSAPhoneNumber } from '../utils/phoneFormatter';
+import { formatSAPhoneNumber, isValidSAPhoneNumber, formatPhoneForDisplay } from '../utils/phoneFormatter';
 
 const { width, height } = Dimensions.get('window');
 
@@ -71,6 +71,7 @@ type StepData = {
   secondaryContactEmail: string;
   secondaryContactPhone: string;
   secondaryContactRelationship: string;
+  secondaryContactRelationshipOption: string;
   password: string;
   confirmPassword: string;
   popiaAccepted: boolean;
@@ -80,6 +81,8 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
   const [currentStep, setCurrentStep] = useState(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const customRelationshipInputRef = useRef<TextInput | null>(null);
+  const scrollViewRef = useRef<ScrollView | null>(null);
 
   const [formData, setFormData] = useState<StepData>({
     email: '',
@@ -117,6 +120,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     secondaryContactEmail: '',
     secondaryContactPhone: '',
     secondaryContactRelationship: '',
+    secondaryContactRelationshipOption: '',
     password: '',
     confirmPassword: '',
     popiaAccepted: false,
@@ -136,6 +140,50 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
   const [showNeverModal, setShowNeverModal] = useState(false);
   const [executorFlowView, setExecutorFlowView] = useState<'selection' | 'details' | null>(null);
   const [secondaryContactSkipped, setSecondaryContactSkipped] = useState(false);
+  const [relationshipDropdownVisible, setRelationshipDropdownVisible] = useState(false);
+  useEffect(() => {
+    if (currentStep !== 2) {
+      setRelationshipDropdownVisible(false);
+    }
+  }, [currentStep]);
+
+  const relationshipOptions = [
+    { label: 'Spouse', value: 'spouse' },
+    { label: 'Partner', value: 'partner' },
+    { label: 'Fiancé / Fiancée', value: 'fiance' },
+    { label: 'Child', value: 'child' },
+    { label: 'Parent', value: 'parent' },
+    { label: 'Stepparent', value: 'stepparent' },
+    { label: 'Stepchild', value: 'stepchild' },
+    { label: 'Sibling', value: 'sibling' },
+    { label: 'Half-Sibling', value: 'half_sibling' },
+    { label: 'Grandparent', value: 'grandparent' },
+    { label: 'Grandchild', value: 'grandchild' },
+    { label: 'Aunt', value: 'aunt' },
+    { label: 'Uncle', value: 'uncle' },
+    { label: 'Niece', value: 'niece' },
+    { label: 'Nephew', value: 'nephew' },
+    { label: 'Cousin', value: 'cousin' },
+    { label: 'Guardian', value: 'guardian' },
+    { label: 'Ward', value: 'ward' },
+    { label: 'Friend', value: 'friend' },
+    { label: 'Neighbour', value: 'neighbour' },
+    { label: 'Mentor', value: 'mentor' },
+    { label: 'Mentee', value: 'mentee' },
+    { label: 'Colleague', value: 'colleague' },
+    { label: 'Business Partner', value: 'business_partner' },
+    { label: 'Employer', value: 'employer' },
+    { label: 'Employee', value: 'employee' },
+    { label: 'Caregiver', value: 'caregiver' },
+    { label: 'Pastor / Spiritual Leader', value: 'pastor' },
+    { label: 'Financial Advisor', value: 'financial_advisor' },
+    { label: 'Legal Advisor', value: 'legal_advisor' },
+    { label: 'Doctor', value: 'doctor' },
+    { label: 'Therapist', value: 'therapist' },
+    { label: 'Coach', value: 'coach' },
+    { label: 'Other', value: 'other' },
+  ];
+
   const [showExecutorCancelConfirm, setShowExecutorCancelConfirm] = useState(false);
   const hasExecutorAssigned = formData.hasOwnExecutor || formData.miWillExecutorAccepted;
 
@@ -261,6 +309,13 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     }
   }, [currentStep]);
 
+  // Scroll to top when step changes
+  useEffect(() => {
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: 0, animated: true });
+    }
+  }, [currentStep]);
+
   const phoneFields: (keyof StepData)[] = [
     'phone',
     'attorneyPhone',
@@ -295,6 +350,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     updateFormData('secondaryContactFirstName', '');
     updateFormData('secondaryContactSurname', '');
     updateFormData('secondaryContactRelationship', '');
+    updateFormData('secondaryContactRelationshipOption', '');
     updateFormData('secondaryContactEmail', '');
     updateFormData('secondaryContactPhone', '');
     nextStep();
@@ -302,7 +358,21 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 
   const handleAddSecondaryContactFromReview = () => {
     setSecondaryContactSkipped(false);
+    updateFormData('secondaryContactRelationshipOption', '');
     setCurrentStep(2);
+  };
+
+  const handleSelectRelationship = (optionValue: string, label: string) => {
+    updateFormData('secondaryContactRelationshipOption', optionValue);
+    if (optionValue === 'other') {
+      updateFormData('secondaryContactRelationship', '');
+      setTimeout(() => {
+        customRelationshipInputRef.current?.focus();
+      }, 150);
+    } else {
+      updateFormData('secondaryContactRelationship', label);
+    }
+    setRelationshipDropdownVisible(false);
   };
 
   const openExecutorManager = (view: 'selection' | 'details') => {
@@ -500,7 +570,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                   style={styles.input}
                   placeholder="Phone Number"
                   placeholderTextColor={theme.colors.placeholder}
-                  value={formData.executorPhone}
+                  value={formatPhoneForDisplay(formData.executorPhone)}
                   onChangeText={(value) => updateFormData('executorPhone', value)}
                   keyboardType="phone-pad"
                 />
@@ -925,11 +995,6 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               </TouchableOpacity>
             </View>
 
-            <View style={styles.policyNumberDisplay}>
-              <Text style={styles.policyNumberLabel}>Your Reference Number:</Text>
-              <Text style={styles.policyNumberValue}>{formData.policyNumber}</Text>
-            </View>
-
             <TextInput
               style={styles.input}
               placeholder="First Name"
@@ -960,7 +1025,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               style={styles.input}
               placeholder="Phone Number (e.g. 082 581 6642)"
               placeholderTextColor={theme.colors.placeholder}
-              value={formData.phone}
+              value={formatPhoneForDisplay(formData.phone)}
               onChangeText={(value) => updateFormData('phone', value)}
               keyboardType="phone-pad"
             />
@@ -1177,7 +1242,15 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
           </Animated.View>
         );
 
-      case 2:
+      case 2: {
+        const selectedRelationshipOption = relationshipOptions.find(
+          option => option.value === formData.secondaryContactRelationshipOption
+        );
+        const relationshipDisplayText =
+          formData.secondaryContactRelationshipOption === 'other' && formData.secondaryContactRelationship
+            ? formData.secondaryContactRelationship
+            : selectedRelationshipOption?.label || 'Select relationship';
+
         return (
           <Animated.View style={[styles.stepContainer, animatedStyle]}>
             <View style={styles.stepTopBar}>
@@ -1188,7 +1261,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 <Text style={styles.topBackButtonText}>Back</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleSkipSecondaryContact}>
-                <Text style={styles.skipButtonText}>Skip</Text>
+                <Text style={styles.skipButtonText}>Add Later</Text>
               </TouchableOpacity>
             </View>
             <Text style={styles.stepTitle}>Emergency contact</Text>
@@ -1215,13 +1288,64 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               onChangeText={(value) => updateFormData('secondaryContactSurname', value)}
             />
 
+            <View
+              style={[
+                styles.dropdownWrapper,
+                relationshipDropdownVisible && styles.dropdownWrapperExpanded,
+              ]}
+            >
+              <TouchableOpacity
+                style={[styles.input, styles.dropdownInput]}
+                onPress={() => setRelationshipDropdownVisible(prev => !prev)}
+              >
+                <Text
+                  style={
+                    formData.secondaryContactRelationship ||
+                    formData.secondaryContactRelationshipOption
+                      ? styles.dropdownSelectedText
+                      : styles.dropdownPlaceholder
+                  }
+                >
+                  {relationshipDisplayText}
+                </Text>
+                <Ionicons
+                  name={relationshipDropdownVisible ? 'chevron-up' : 'chevron-down'}
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
+              </TouchableOpacity>
+              {relationshipDropdownVisible && (
+                <View style={styles.dropdownList}>
+                  <ScrollView
+                    style={styles.dropdownScroll}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator
+                    contentContainerStyle={styles.dropdownListContent}
+                  >
+                    {relationshipOptions.map(option => (
+                      <TouchableOpacity
+                        key={option.value}
+                        style={styles.dropdownOption}
+                        onPress={() => handleSelectRelationship(option.value, option.label)}
+                      >
+                        <Text style={styles.dropdownOptionText}>{option.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+            </View>
+              )}
+            </View>
+
+            {formData.secondaryContactRelationshipOption === 'other' && (
             <TextInput
+                ref={customRelationshipInputRef}
               style={styles.input}
-              placeholder="Relationship (e.g., Spouse, Friend)"
+                placeholder="State Other relationship"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.secondaryContactRelationship}
               onChangeText={(value) => updateFormData('secondaryContactRelationship', value)}
             />
+            )}
 
             <TextInput
               style={styles.input}
@@ -1237,12 +1361,13 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               style={styles.input}
               placeholder="Contact Phone Number"
               placeholderTextColor={theme.colors.placeholder}
-              value={formData.secondaryContactPhone}
+              value={formatPhoneForDisplay(formData.secondaryContactPhone)}
               onChangeText={(value) => updateFormData('secondaryContactPhone', value)}
               keyboardType="phone-pad"
             />
           </Animated.View>
         );
+      }
 
 
       case 3:
@@ -1277,7 +1402,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 <Text style={styles.reviewItem}>Email: {formData.email}</Text>
                 <Text style={styles.reviewItem}>Phone: {formData.phone}</Text>
                 <Text style={styles.reviewItem}>ID Number: {formData.idNumber}</Text>
-                <Text style={styles.reviewItem}>Policy Number: {formData.policyNumber}</Text>
+                <Text style={styles.reviewItem}>Reference Number: {formData.policyNumber}</Text>
                 {formData.address && (
                   <Text style={styles.reviewItem}>Address: {formData.address}</Text>
                 )}
@@ -1297,55 +1422,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                 </Text>
               </View>
 
-              <View style={styles.reviewSection}>
-                <Text style={styles.reviewSectionTitle}>Executor</Text>
-                {formData.hasOwnExecutor ? (
-                  <>
-                    <Text style={styles.reviewItem}>
-                      Name: {`${formData.executorFirstName} ${formData.executorSurname}`.trim()}
-                    </Text>
-                    {formData.executorRelationship ? (
-                      <Text style={styles.reviewItem}>Relationship: {formData.executorRelationship}</Text>
-                    ) : null}
-                    {formData.executorEmail ? (
-                      <Text style={styles.reviewItem}>Email: {formData.executorEmail}</Text>
-                    ) : null}
-                    {formData.executorPhone ? (
-                      <Text style={styles.reviewItem}>Phone: {formData.executorPhone}</Text>
-                    ) : null}
-                  </>
-                ) : formData.miWillExecutorAccepted ? (
-                  <Text style={styles.reviewItemNote}>
-                    Managed by MiWill Executors. You can appoint your own anytime.
-                  </Text>
-                ) : (
-                  <Text style={styles.reviewItemNote}>
-                    No executor yet. Tap below to appoint one anytime.
-                  </Text>
-                )}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.reviewActionButtonOutline,
-                    pressed && styles.reviewActionButtonOutlineActive,
-                  ]}
-                  onPress={() =>
-                    openExecutorManager(hasExecutorAssigned ? 'selection' : 'selection')
-                  }
-                >
-                  {({ pressed }) => (
-                    <Text
-                      style={[
-                        styles.reviewActionButtonOutlineText,
-                        pressed && styles.reviewActionButtonOutlineTextActive,
-                      ]}
-                    >
-                      {hasExecutorAssigned ? 'Update Executor' : 'Add Executor'}
-                    </Text>
-                  )}
-                </Pressable>
-              </View>
-
-              <View style={styles.reviewSection}>
+                <View style={styles.reviewSection}>
                 <Text style={styles.reviewSectionTitle}>Emergency Contact</Text>
                 {secondaryContactSkipped ? (
                   <>
@@ -1400,18 +1477,12 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               </TouchableOpacity>
             </View>
             <View style={styles.completionContainer}>
-              <Image
-                source={require('../../assets/logo1.png')}
-                style={styles.completionLogoBig}
-                resizeMode="contain"
-              />
               <View style={styles.iconContainer}>
                 <Ionicons name="checkmark-circle" size={80} color={theme.colors.primary} />
               </View>
               <Text style={styles.completionTitle}>All Set!</Text>
               <Text style={styles.completionText}>
-                Your MiWill account is ready. You can now add your assets, policies, and
-                beneficiaries from the dashboard.
+                Your MiWill account is ready. You can now draft your Will!
               </Text>
             </View>
           </Animated.View>
@@ -1461,11 +1532,19 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
+          ref={scrollViewRef}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
           {renderProgressBar()}
           {renderStep()}
+
+          {currentStep === totalSteps - 1 && (
+            <View style={styles.policyNumberDisplaySimple}>
+              <Text style={styles.policyNumberLabelSimple}>Your Reference Number:</Text>
+              <Text style={styles.policyNumberValueSimple}>{formData.policyNumber}</Text>
+            </View>
+          )}
 
           <View style={styles.buttonContainer}>
             <TouchableOpacity
@@ -1490,8 +1569,8 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
                     !isStepValid() && styles.nextButtonTextDisabled,
                   ]}
                 >
-                  {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
-                </Text>
+                {currentStep === totalSteps - 1 ? 'Complete' : 'Continue'}
+              </Text>
               )}
             </TouchableOpacity>
           </View>
@@ -1829,7 +1908,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Gentle Reminder</Text>
             <Text style={styles.modalBody}>
-              Life happens, we will check on you once a year.
+              Life happens, we'll still check on you once a year.
             </Text>
             <TouchableOpacity
               style={styles.modalCloseButton}
@@ -2086,6 +2165,64 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     backgroundColor: theme.colors.inputBackground,
     marginBottom: theme.spacing.md,
+  },
+  dropdownWrapper: {
+    position: 'relative',
+    marginBottom: theme.spacing.md,
+  },
+  dropdownWrapperExpanded: {
+    paddingBottom: 160,
+  },
+  dropdownInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 0,
+  },
+  dropdownPlaceholder: {
+    color: theme.colors.placeholder,
+    fontSize: theme.typography.sizes.md,
+  },
+  dropdownSelectedText: {
+    color: theme.colors.text,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.medium as any,
+  },
+  dropdownList: {
+    position: 'absolute',
+    top: 64,
+    left: 0,
+    right: 0,
+    backgroundColor: theme.colors.surface,
+    opacity: 1,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    zIndex: 20,
+    elevation: 4,
+    shadowColor: '#00000033',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    maxHeight: 160,
+    overflow: 'hidden',
+  },
+  dropdownListContent: {
+    paddingVertical: theme.spacing.xs,
+    backgroundColor: theme.colors.surface,
+  },
+  dropdownScroll: {
+    backgroundColor: theme.colors.surface,
+  },
+  dropdownOption: {
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderLight,
+  },
+  dropdownOptionText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.text,
   },
   passwordInputWrapper: {
     height: 56,
@@ -2368,6 +2505,23 @@ const styles = StyleSheet.create({
   },
   policyNumberValue: {
     fontSize: theme.typography.sizes.sm,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.weights.semibold as any,
+    letterSpacing: 0.5,
+  },
+  policyNumberDisplaySimple: {
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+    marginTop: theme.spacing.md,
+  },
+  policyNumberLabelSimple: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.xs / 2,
+    fontWeight: theme.typography.weights.medium as any,
+  },
+  policyNumberValueSimple: {
+    fontSize: theme.typography.sizes.md,
     color: theme.colors.primary,
     fontWeight: theme.typography.weights.semibold as any,
     letterSpacing: 0.5,
