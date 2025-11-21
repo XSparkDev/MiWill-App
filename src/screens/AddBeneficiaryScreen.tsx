@@ -36,6 +36,8 @@ interface AddBeneficiaryScreenProps {
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
+const formatPhoneInput = (value: string) => formatSAPhoneNumber(value);
+
 const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation, route }) => {
   const { currentUser } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
@@ -221,7 +223,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
       const updated: typeof prev = { ...prev };
 
       if (field === 'beneficiaryPhone') {
-        (updated as any)[field] = value as string;
+        (updated as any)[field] = formatPhoneInput(value as string);
         return updated;
       }
 
@@ -295,7 +297,10 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
   };
 
   const updateInlineBeneficiaryField = (field: keyof typeof inlineBeneficiaryForm, value: string) => {
-    setInlineBeneficiaryForm(prev => ({ ...prev, [field]: value }));
+    setInlineBeneficiaryForm(prev => ({
+      ...prev,
+      [field]: field === 'phone' ? formatPhoneInput(value) : value,
+    }));
   };
 
   const handleInlineBeneficiarySave = async () => {
@@ -484,7 +489,12 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
   ) => {
     setAdditionalBeneficiaries(prev =>
       prev.map(entry =>
-        entry.id === id ? { ...entry, [field]: value } : entry
+        entry.id === id
+          ? {
+              ...entry,
+              [field]: field === 'phone' ? formatPhoneInput(value) : value,
+            }
+          : entry
       )
     );
   };
@@ -674,7 +684,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
           surname: formData.beneficiarySurname.trim(),
           name: formData.beneficiaryName.trim(),
           email: formData.beneficiaryEmail.trim(),
-          phone: formData.beneficiaryPhone.trim(),
+          phone: formatPhoneInput(formData.beneficiaryPhone.trim()),
           address: formData.beneficiaryAddress.trim(),
           relationship: formData.relationshipToUser.trim(),
         },
@@ -691,7 +701,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
             surname: entry.surname.trim(),
             name: `${entry.firstName.trim()} ${entry.surname.trim()}`.trim(),
             email: entry.email.trim(),
-            phone: entry.phone.trim(),
+            phone: formatPhoneInput(entry.phone.trim()),
             address: entry.address.trim(),
             relationship: entry.relationship.trim(),
           })),
