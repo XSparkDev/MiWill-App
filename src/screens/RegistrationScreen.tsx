@@ -2515,13 +2515,13 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.md,
   },
   policyNumberLabelSimple: {
-    fontSize: theme.typography.sizes.sm,
+    fontSize: theme.typography.sizes.md,
     color: theme.colors.textSecondary,
     marginBottom: theme.spacing.xs / 2,
     fontWeight: theme.typography.weights.medium as any,
   },
   policyNumberValueSimple: {
-    fontSize: theme.typography.sizes.md,
+    fontSize: theme.typography.sizes.lg,
     color: theme.colors.primary,
     fontWeight: theme.typography.weights.semibold as any,
     letterSpacing: 0.5,

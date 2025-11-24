@@ -21,6 +21,10 @@ import { useAuth } from '../contexts/AuthContext';
 import AssetService from '../services/assetService';
 import PolicyService from '../services/policyService';
 import BeneficiaryService from '../services/beneficiaryService';
+import WillService from '../services/willService';
+import UserService from '../services/userService';
+import ExecutorService from '../services/executorService';
+import { generateWillHTML, saveWillHTML } from '../utils/willGenerator';
 import Toast from '../components/Toast';
 import { AssetInformation } from '../types/asset';
 import { PolicyInformation } from '../types/policy';
@@ -112,6 +116,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
   const [showGuidedExplainer, setShowGuidedExplainer] = useState(false);
   const [dontShowGuidedExplainerAgain, setDontShowGuidedExplainerAgain] = useState(false);
   const returnToRoute = route?.params?.returnTo;
+  const fromGuidedFlow = route?.params?.fromGuidedFlow ?? false;
 
   const totalSteps = 3;
   
@@ -1529,7 +1534,75 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
       await Promise.all([...assetLinkPromises, ...policyLinkPromises, ...existingBeneficiaryUpdatePromises]);
       }
 
+      // If this is part of the guided flow, generate and save the will
+      if (fromGuidedFlow) {
+        try {
+          // Fetch all necessary data for will generation
+          const [userProfile, userExecutors, allBeneficiaries, allAssets, allPolicies] = await Promise.all([
+            UserService.getUserById(currentUser.uid),
+            ExecutorService.getUserExecutors(currentUser.uid),
+            BeneficiaryService.getUserBeneficiaries(currentUser.uid),
+            AssetService.getUserAssets(currentUser.uid),
+            PolicyService.getUserPolicies(currentUser.uid),
+          ]);
+
+          // Fetch asset and policy beneficiary links with percentages
+          const assetLinksMap: Record<string, Record<string, number>> = {};
+          const policyLinksMap: Record<string, Record<string, number>> = {};
+
+          for (const asset of allAssets) {
+            const links = await BeneficiaryService.getAssetBeneficiaryLinks(asset.asset_id);
+            assetLinksMap[asset.asset_id] = links;
+          }
+
+          for (const policy of allPolicies) {
+            const links = await BeneficiaryService.getPolicyBeneficiaryLinks(policy.policy_id);
+            policyLinksMap[policy.policy_id] = links;
+          }
+
+          if (userProfile) {
+            // Generate will HTML
+            const willHTML = await generateWillHTML(
+              userProfile,
+              userExecutors.length > 0 ? userExecutors[0] : null,
+              allBeneficiaries,
+              allAssets,
+              allPolicies,
+              assetLinksMap,
+              policyLinksMap
+            );
+
+            // Save will HTML to file
+            const willFileUri = await saveWillHTML(willHTML);
+
+            // Save will to database
+            await WillService.createWill({
+              user_id: currentUser.uid,
+              will_type: 'document',
+              document_path: willFileUri,
+              will_document_name: 'MiWill Digital Will',
+              will_title: 'MiWill Digital Will',
+              status: 'active',
+              is_verified: false,
+              is_primary_will: true,
+              last_updated: new Date(),
+            });
+          }
+        } catch (willError) {
+          console.error('Error generating/saving will:', willError);
+          // Continue even if will generation fails
+        }
+      }
+
       setToast({ message: 'Beneficiary added successfully!', type: 'success' });
+      
+      if (fromGuidedFlow) {
+        // Navigate to ViewWillScreen during guided flow
+        setTimeout(() => {
+          navigation.navigate('ViewWill');
+        }, 800);
+        return;
+      }
       
       if (returnToRoute) {
         setTimeout(() => {
@@ -2396,6 +2469,43 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
             <Text style={styles.stepSubtitle}>Review beneficiary information and assignments</Text>
 
             <ScrollView style={styles.reviewContainer} nestedScrollEnabled>
+              {formData.selectedAssets.length > 0 && (
+                <View style={styles.reviewSection}>
+                  <Text style={styles.reviewSectionTitle}>Assigned Assets ({formData.selectedAssets.length})</Text>
+                  {formData.selectedAssets.map((assetId) => {
+                    const asset = assets.find(a => a.asset_id === assetId);
+                    if (!asset) return null;
+                    const allocations = assetAllocations[assetId] || {};
+                    const allocationEntries = beneficiaryDrafts
+                      .map(beneficiary => ({
+                        label: beneficiary.label,
+                        name:
+                          `${beneficiary.firstName} ${beneficiary.surname}`.trim() ||
+                          beneficiary.displayName,
+                        percentage: allocations[beneficiary.key] ?? (beneficiary.isPrimary ? 100 : 0),
+                      }))
+                      .filter(entry => entry.percentage > 0);
+
+                    return (
+                      <View key={assetId} style={styles.reviewSubSection}>
+                        <Text style={styles.reviewItem}>
+                        • {asset.asset_name} ({asset.asset_type.replace('_', ' ')})
+                      </Text>
+                        {allocationEntries.length > 0 ? (
+                          allocationEntries.map(entry => (
+                            <Text key={`${assetId}-${entry.label}`} style={styles.reviewAllocationItem}>
+                              {entry.label}: {entry.percentage}% ({entry.name})
+                            </Text>
+                          ))
+                        ) : (
+                          <Text style={styles.reviewAllocationItem}>No allocation set</Text>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
               <View style={styles.reviewSection}>
                 <Text style={styles.reviewSectionTitle}>Beneficiaries</Text>
                 {beneficiaryDrafts.map((beneficiary) => (
@@ -2422,43 +2532,6 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                   </View>
                 ))}
               </View>
-
-              {formData.selectedAssets.length > 0 && (
-                <View style={styles.reviewSection}>
-                  <Text style={styles.reviewSectionTitle}>Assigned Assets ({formData.selectedAssets.length})</Text>
-                  {formData.selectedAssets.map((assetId) => {
-                    const asset = assets.find(a => a.asset_id === assetId);
-                    if (!asset) return null;
-                    const allocations = assetAllocations[assetId] || {};
-                    const allocationEntries = beneficiaryDrafts
-                      .map(beneficiary => ({
-                        label: beneficiary.label,
-                        name:
-                          `${beneficiary.firstName} ${beneficiary.surname}`.trim() ||
-                          beneficiary.displayName,
-                        percentage: allocations[beneficiary.key] ?? (beneficiary.isPrimary ? 100 : 0),
-                      }))
-                      .filter(entry => entry.percentage > 0);
-
-                    return (
-                      <View key={assetId} style={styles.reviewSubSection}>
-                        <Text style={styles.reviewItem}>
-                          • {asset.asset_name} ({asset.asset_type.replace('_', ' ')})
-                        </Text>
-                        {allocationEntries.length > 0 ? (
-                          allocationEntries.map(entry => (
-                            <Text key={`${assetId}-${entry.label}`} style={styles.reviewAllocationItem}>
-                              {entry.label}: {entry.percentage}% ({entry.name})
-                            </Text>
-                          ))
-                        ) : (
-                          <Text style={styles.reviewAllocationItem}>No allocation set</Text>
-                        )}
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
 
               {formData.selectedPolicies.length > 0 && (
                 <View style={styles.reviewSection}>
@@ -2561,7 +2634,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
             Now that you have added an asset you can assign the asset to a beneficiary.
             </Text>
             <TouchableOpacity
-              style={styles.guidedModalButton}
+              style={styles.policyModalPrimary}
               onPress={async () => {
                 if (dontShowGuidedExplainerAgain) {
                   await setDontShowAgain('ADD_BENEFICIARY_GUIDED');
@@ -2569,7 +2642,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                 setShowGuidedExplainer(false);
               }}
             >
-              <Text style={styles.guidedModalButtonText}>Let's start linking</Text>
+              <Text style={styles.policyModalPrimaryText}>Let's start linking</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.modalCheckboxContainer}
@@ -3283,16 +3356,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
   },
-  guidedModalButton: {
-    marginTop: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.xl,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.full,
+  policyModalPrimary: {
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.buttonPrimary,
+    alignItems: 'center',
+    alignSelf: 'stretch',
   },
-  guidedModalButtonText: {
-    color: theme.colors.buttonText,
+  policyModalPrimaryText: {
     fontSize: theme.typography.sizes.md,
+    color: theme.colors.buttonText,
     fontWeight: theme.typography.weights.semibold as any,
   },
   modalCheckboxContainer: {

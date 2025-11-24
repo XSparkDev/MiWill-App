@@ -26,6 +26,7 @@ import UpdateAttorneyScreen from '../screens/UpdateAttorneyScreen';
 import UpdateExecutorScreen from '../screens/UpdateExecutorScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import CODCalculatorScreen from '../screens/CODCalculatorScreen';
+import ViewWillScreen from '../screens/ViewWillScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -54,6 +55,7 @@ export type RootStackParamList = {
   TermsConditions: undefined;
   PrivacyPolicy: undefined;
   ResetPassword: undefined;
+  ViewWill: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -78,6 +80,7 @@ const AppNavigator: React.FC = () => {
       <Stack.Screen name="UpdateAttorney" component={UpdateAttorneyScreen} />
       <Stack.Screen name="UpdateExecutor" component={UpdateExecutorScreen} />
       <Stack.Screen name="CODCalculator" component={CODCalculatorScreen} />
+      <Stack.Screen name="ViewWill" component={ViewWillScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
       <Stack.Screen name="DocumentsContacts" component={DocumentsContactsScreen} />

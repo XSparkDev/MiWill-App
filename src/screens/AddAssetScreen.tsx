@@ -170,6 +170,18 @@ const isValidDateString = (value: string): boolean => {
   return true;
 };
 
+const isFutureDate = (value: string): boolean => {
+  if (!isValidDateString(value)) {
+    return false;
+  }
+  const [year, month, day] = value.split('-').map(Number);
+  const inputDate = new Date(year, month - 1, day);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  inputDate.setHours(0, 0, 0, 0);
+  return inputDate > today;
+};
+
 const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) => {
   const { currentUser } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
@@ -434,6 +446,12 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
           setShowToast(true);
           return;
         }
+        if (isFutureDate(formData.datePurchased.trim())) {
+          setToastMessage('Purchase date cannot be in the future');
+          setToastType('error');
+          setShowToast(true);
+          return;
+        }
       }
 
       Animated.parallel([
@@ -469,7 +487,7 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
     }
   };
 
-  const handleSaveAsset = async (nextAction: 'back' | 'link' = 'back') => {
+  const handleSaveAsset = async (nextAction: 'back' | 'link' | 'addMore' = 'back') => {
     if (!currentUser) {
       setToastMessage('You must be logged in to add an Asset');
       setToastType('error');
@@ -531,9 +549,30 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
           fromGuidedFlow: fromGuidedWill,
           returnTo: fromGuidedWill ? 'Dashboard' : undefined,
         });
+      } else if (nextAction === 'addMore') {
+        // Reset form and go back to step 0
+        setFormData({
+          assetName: '',
+          assetType: '',
+          otherAssetType: '',
+          assetDescription: '',
+          assetValue: '',
+          assetLocation: '',
+          financingStatus: '',
+          financeProviderType: '',
+          financeProviderName: '',
+          financeProviderOther: '',
+          datePurchased: '',
+          repaymentTerm: '',
+          paidUpDate: '',
+        });
+        setCurrentStep(0);
+        slideAnim.setValue(0);
+        fadeAnim.setValue(1);
+        setSaving(false);
       } else {
         setTimeout(() => {
-          navigation.goBack();
+          navigation.navigate('Dashboard');
         }, 1500);
       }
     } catch (error: any) {
@@ -779,6 +818,14 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
 
                 <TextInput
                   style={styles.input}
+                  placeholder="Date Purchased (YYYY-MM-DD)"
+                  placeholderTextColor={theme.colors.placeholder}
+                  value={formData.datePurchased}
+                  onChangeText={(value) => updateFormData('datePurchased', value)}
+                />
+
+                <TextInput
+                  style={styles.input}
                   placeholder="Paid-up Date (YYYY-MM-DD)"
                   placeholderTextColor={theme.colors.placeholder}
                   value={formData.paidUpDate}
@@ -787,13 +834,15 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
               </>
             )}
 
-            <TextInput
-              style={styles.input}
-              placeholder="Date Purchased (YYYY-MM-DD)"
-              placeholderTextColor={theme.colors.placeholder}
-              value={formData.datePurchased}
-              onChangeText={(value) => updateFormData('datePurchased', value)}
-            />
+            {formData.financingStatus !== 'financed' && (
+              <TextInput
+                style={styles.input}
+                placeholder="Date Purchased (YYYY-MM-DD)"
+                placeholderTextColor={theme.colors.placeholder}
+                value={formData.datePurchased}
+                onChangeText={(value) => updateFormData('datePurchased', value)}
+              />
+            )}
           </Animated.View>
         );
 
@@ -926,8 +975,14 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
                   )}
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.backButton} onPress={previousStep}>
-                  <Text style={styles.backButtonText}>Back</Text>
+                <TouchableOpacity
+                  style={[styles.addMoreButton, saving && styles.addMoreButtonDisabled]}
+                  onPress={async () => {
+                    await handleSaveAsset('addMore');
+                  }}
+                  disabled={saving}
+                >
+                  <Text style={styles.addMoreButtonText}>Add more assets</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -1312,6 +1367,24 @@ const styles = StyleSheet.create({
   secondaryButtonTextDisabled: {
     color: theme.colors.textSecondary,
   },
+  addMoreButton: {
+    width: '100%',
+    minHeight: 56,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xl,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
+  },
+  addMoreButtonDisabled: {
+    opacity: 0.5,
+  },
+  addMoreButtonText: {
+    fontSize: theme.typography.sizes.lg,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.primary,
+  },
   disclaimerBox: {
     flexDirection: 'row',
     backgroundColor: theme.colors.info + '15',
@@ -1383,6 +1456,7 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.weights.bold as any,
     color: theme.colors.text,
     textAlign: 'center',
+    marginBottom: -theme.spacing.sm,
   },
   policyModalTitle: {
     fontSize: theme.typography.sizes.xl,

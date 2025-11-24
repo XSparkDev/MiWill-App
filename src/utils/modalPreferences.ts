@@ -7,6 +7,7 @@ const PREFERENCE_KEYS = {
   ADD_POLICY_FIRST_TIME: 'modal_pref_add_policy_first_time',
   ADD_POLICY_LINK_BENEFICIARY: 'modal_pref_add_policy_link_beneficiary',
   ADD_BENEFICIARY_GUIDED: 'modal_pref_add_beneficiary_guided',
+  VIEW_WILL_GUIDED: 'modal_pref_view_will_guided',
 } as const;
 
 export type ModalPreferenceKey = keyof typeof PREFERENCE_KEYS;

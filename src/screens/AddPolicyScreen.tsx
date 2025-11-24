@@ -225,7 +225,7 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
     }
   };
 
-  const handleSavePolicy = async (nextAction: 'back' | 'link' = 'back') => {
+  const handleSavePolicy = async (nextAction: 'back' | 'link' | 'addMore' = 'back') => {
     if (!currentUser) {
       setToastMessage('You must be logged in to add a policy');
       setToastType('error');
@@ -258,9 +258,23 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
           fromGuidedFlow: fromGuidedWill,
           returnTo: fromGuidedWill ? 'Dashboard' : undefined,
         });
+      } else if (nextAction === 'addMore') {
+        // Reset form and go back to step 0
+        setFormData({
+          policyNumber: '',
+          policyType: '',
+          otherPolicyType: '',
+          insuranceCompany: '',
+          policyValue: '',
+          policyDescription: '',
+        });
+        setCurrentStep(0);
+        slideAnim.setValue(0);
+        fadeAnim.setValue(1);
+        setSaving(false);
       } else {
         setTimeout(() => {
-          navigation.goBack();
+          navigation.navigate('Dashboard');
         }, 1500);
       }
     } catch (error: any) {
@@ -511,8 +525,14 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
                   )}
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.backButton} onPress={previousStep}>
-                  <Text style={styles.backButtonText}>Back</Text>
+                <TouchableOpacity
+                  style={[styles.addMoreButton, saving && styles.addMoreButtonDisabled]}
+                  onPress={async () => {
+                    await handleSavePolicy('addMore');
+                  }}
+                  disabled={saving}
+                >
+                  <Text style={styles.addMoreButtonText}>Add more policies</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -565,12 +585,24 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
         onRequestClose={() => setShowFirstTimeModal(false)}
       >
         <View style={styles.infoModalOverlay}>
-          <View style={styles.infoModalContainer}>
-            <Ionicons name="information-circle-outline" size={32} color={theme.colors.primary} />
-            <Text style={styles.infoModalTitle}>Add your policy details</Text>
-            <Text style={styles.infoModalSubtitle}>
+          <View style={styles.policyModalContainer}>
+            <Ionicons name="bulb-outline" size={42} color={theme.colors.primary} />
+            <Text style={styles.policyModalStartTitle}>Start</Text>
+            <Text style={styles.policyModalTitle}>Add Your Policies</Text>
+            <Text style={styles.policyModalBody}>
               Capture the policy number, insurer, and value so we can link beneficiaries immediately after saving.
             </Text>
+            <TouchableOpacity
+              style={styles.policyModalPrimary}
+              onPress={async () => {
+                if (dontShowFirstTimeAgain) {
+                  await setDontShowAgain('ADD_POLICY_FIRST_TIME');
+                }
+                setShowFirstTimeModal(false);
+              }}
+            >
+              <Text style={styles.policyModalPrimaryText}>Let's do it</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.modalCheckboxContainer}
               onPress={() => setDontShowFirstTimeAgain(!dontShowFirstTimeAgain)}
@@ -579,17 +611,6 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
                 {dontShowFirstTimeAgain && <Text style={styles.modalCheckmark}>✓</Text>}
               </View>
               <Text style={styles.modalCheckboxText}>Don't show again</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modalCloseButton}
-              onPress={async () => {
-                if (dontShowFirstTimeAgain) {
-                  await setDontShowAgain('ADD_POLICY_FIRST_TIME');
-                }
-                setShowFirstTimeModal(false);
-              }}
-            >
-              <Text style={styles.modalCloseText}>Understood</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -833,6 +854,24 @@ const styles = StyleSheet.create({
   secondaryButtonTextDisabled: {
     color: theme.colors.textSecondary,
   },
+  addMoreButton: {
+    width: '100%',
+    minHeight: 56,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xl,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
+  },
+  addMoreButtonDisabled: {
+    opacity: 0.5,
+  },
+  addMoreButtonText: {
+    fontSize: theme.typography.sizes.lg,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.primary,
+  },
   infoModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -925,6 +964,44 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.buttonPrimary,
   },
   infoModalButtonText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.buttonText,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  policyModalContainer: {
+    width: '100%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xxl,
+    padding: theme.spacing.xl,
+    alignItems: 'center',
+    gap: theme.spacing.md,
+  },
+  policyModalStartTitle: {
+    fontSize: theme.typography.sizes.xxxl,
+    fontWeight: theme.typography.weights.bold as any,
+    color: theme.colors.text,
+    textAlign: 'center',
+  },
+  policyModalTitle: {
+    fontSize: theme.typography.sizes.xl,
+    fontWeight: theme.typography.weights.bold as any,
+    color: theme.colors.text,
+    textAlign: 'center',
+  },
+  policyModalBody: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
+  },
+  policyModalPrimary: {
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.buttonPrimary,
+    alignItems: 'center',
+    alignSelf: 'stretch',
+  },
+  policyModalPrimaryText: {
     fontSize: theme.typography.sizes.md,
     color: theme.colors.buttonText,
     fontWeight: theme.typography.weights.semibold as any,
