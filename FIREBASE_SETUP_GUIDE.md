@@ -449,6 +449,7 @@ We'll create each collection one by one. In Firestore, you can create collection
    - `beneficiary_first_name`: string
    - `beneficiary_surname`: string
    - `beneficiary_name`: string (auto-generated full name for backward compatibility)
+- `beneficiary_id_number`: string (South African ID number, 13 digits)
    - `beneficiary_email`: string (optional)
    - `beneficiary_phone`: string (optional)
    - `beneficiary_address`: string (optional)

@@ -362,6 +362,56 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     setCurrentStep(2);
   };
 
+  const prefillRegistrationData = () => {
+    const formattedPrimaryPhone = formatSAPhoneNumber('0823456789');
+    const formattedExecutorPhone = formatSAPhoneNumber('0712345678');
+    const formattedSecondaryPhone = formatSAPhoneNumber('0835551212');
+
+    setSecondaryContactSkipped(false);
+    setFormData(prev => ({
+      ...prev,
+      email: 'demo.user+miwill@example.com',
+      phone: formattedPrimaryPhone,
+      firstName: 'Demo',
+      surname: 'User',
+      idNumber: '9001015009087',
+      policyNumber: prev.policyNumber || `REF-MW-${Date.now().toString().slice(-8)}-001`,
+      profilePicturePath: '',
+      address: '123 Demo Street, Cape Town, 8000',
+      notificationFrequency: 'monthly',
+      customYears: '2',
+      customMonths: '0',
+      hasOwnAttorney: true,
+      attorneySkipped: false,
+      attorneyFirstName: 'Lerato',
+      attorneySurname: 'Ndlovu',
+      attorneyEmail: 'lerato.ndlovu@firm.co.za',
+      attorneyPhone: formatSAPhoneNumber('0612345678'),
+      attorneyFirm: 'Ndlovu & Partners',
+      attorneyAddress: '45 Legal Avenue, Sandton',
+      miWillAttorneyAccepted: false,
+      hasOwnExecutor: true,
+      executorSameAsAttorney: false,
+      executorFirstName: 'Thabo',
+      executorSurname: 'Mokoena',
+      executorEmail: 'thabo.mokoena@example.com',
+      executorPhone: formattedExecutorPhone,
+      executorIdNumber: '8205055809084',
+      executorRelationship: 'Brother',
+      executorAddress: '7 Estate Way, Johannesburg',
+      miWillExecutorAccepted: false,
+      secondaryContactFirstName: 'Naledi',
+      secondaryContactSurname: 'Khoza',
+      secondaryContactEmail: 'naledi.khoza@example.com',
+      secondaryContactPhone: formattedSecondaryPhone,
+      secondaryContactRelationship: 'Friend',
+      secondaryContactRelationshipOption: 'friend',
+      password: '2@XSpark',
+      confirmPassword: '2@XSpark',
+      popiaAccepted: true,
+    }));
+  };
+
   const handleSelectRelationship = (optionValue: string, label: string) => {
     updateFormData('secondaryContactRelationshipOption', optionValue);
     if (optionValue === 'other') {
@@ -374,11 +424,6 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     }
     setRelationshipDropdownVisible(false);
   };
-
-  const openExecutorManager = (view: 'selection' | 'details') => {
-    setExecutorFlowView(view);
-  };
-
 
   const handleExecutorFlowSelection = (hasOwn: boolean) => {
     if (hasOwn) {
@@ -1494,7 +1539,8 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
   };
 
   const mainLayout = (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.mainWrapper}>
+      <SafeAreaView style={styles.safeArea}>
       {showConfetti && (
         <View style={styles.confettiContainer} pointerEvents="none">
           {confettiAnims.map((anim, index) => (
@@ -1584,7 +1630,17 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
           )}
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+      </SafeAreaView>
+      <TouchableOpacity
+        style={styles.prefillButton}
+        onPress={prefillRegistrationData}
+        accessibilityLabel="Prefill registration form"
+        hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="document-text-outline" size={20} color={theme.colors.text} />
+      </TouchableOpacity>
+    </View>
   );
 
   const modalLayout = (
@@ -2015,6 +2071,9 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 };
 
 const styles = StyleSheet.create({
+  mainWrapper: {
+    flex: 1,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: theme.colors.background,
@@ -2794,6 +2853,24 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 2,
+  },
+  prefillButton: {
+    position: 'absolute',
+    right: theme.spacing.lg,
+    bottom: theme.spacing.lg,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    shadowColor: '#00000044',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 6,
   },
 });
 

@@ -251,7 +251,7 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
     {
       title: 'Beneficiaries',
       content:
-        'I bequeath my Assets to the following beneficiaries:\n\n1. [Beneficiary Name] - [Relationship] - [Asset/Percentage]\n2. [Beneficiary Name] - [Relationship] - [Asset/Percentage]\n\nThese allocations are to be administered by my executor in accordance with South African estate law.',
+        'I bequeath my assets to the following beneficiaries:\n\n1. [Beneficiary Name] - [Relationship] - [Asset/Percentage]\n2. [Beneficiary Name] - [Relationship] - [Asset/Percentage]\n\nThese allocations are to be administered by my executor in accordance with South African estate law.',
     },
     {
       title: 'Specific Wishes & Signatures',
@@ -460,8 +460,8 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
     if (isDigitalWill) {
       // Navigate to ViewWillScreen for digital wills
       navigation.navigate('ViewWill');
-      return;
-    }
+        return;
+      }
 
     const path = getWillSourcePath(will);
     if (!path) {
@@ -563,7 +563,7 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
     if (audioSound) {
       try {
         await audioSound.unloadAsync();
-      } catch (error) {
+    } catch (error) {
         console.error('Error unloading audio:', error);
       }
       setAudioSound(null);
@@ -1193,15 +1193,15 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
               <Ionicons name="chatbubbles-outline" size={40} color={theme.colors.primary} />
               <Text style={styles.optionText}>Draft My Will</Text>
               <Text style={styles.optionSubtext}>
-                (A guided Process on how to draft your Will.)
+                (A guided process on how to draft your Will.)
               </Text>
               <View style={styles.guidedStepsContainer}>
                 <Text style={styles.guidedStepItem}>1. Add your assets</Text>
                 <Text style={styles.guidedStepItem}>2. Add beneficiaries</Text>
-                <Text style={styles.guidedStepItem}>3. Link beneficiaries to Assets</Text>
+                <Text style={styles.guidedStepItem}>3. Link beneficiaries to assets</Text>
                 <Text style={styles.guidedStepItem}>4. Auto-Will output</Text>
               </View>
-            </TouchableOpacity>
+          </TouchableOpacity>
           </Animated.View>
 
           <TouchableOpacity style={styles.optionButton} onPress={recordVideo}>

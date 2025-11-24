@@ -4,15 +4,27 @@ import {
   getDoc,
   setDoc,
   updateDoc,
-  deleteDoc,
   query,
   where,
   getDocs,
   Timestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { UserProfile, NotificationFrequency } from '../types/user';
+import { UserProfile, NotificationFrequency, SOUTH_AFRICAN_ID_LENGTH } from '../types/user';
 import { formatSAPhoneNumber } from '../utils/phoneFormatter';
+
+export const sanitizeSouthAfricanIdNumber = (value: string): string => {
+  if (!value) {
+    return '';
+  }
+  const digitsOnly = value.replace(/\D/g, '');
+  return digitsOnly.slice(0, SOUTH_AFRICAN_ID_LENGTH);
+};
+
+export const isValidSouthAfricanIdNumber = (value: string): boolean => {
+  const cleaned = sanitizeSouthAfricanIdNumber(value);
+  return cleaned.length === SOUTH_AFRICAN_ID_LENGTH;
+};
 
 export class UserService {
   private static collection = 'users';
@@ -50,6 +62,7 @@ export class UserService {
         id_number: userData.id_number || '',
         policy_number: userData.policy_number || '',
         profile_picture_path: (userData as any).profile_picture_path || '',
+        address: userData.address?.trim() || '',
         notification_frequency: userData.notification_frequency || 'weekly',
         popia_accepted: userData.popia_accepted || false,
         popia_accepted_at: userData.popia_accepted ? Timestamp.now() : null,

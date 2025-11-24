@@ -4,6 +4,7 @@ export interface BeneficiaryInformation {
   beneficiary_first_name?: string;
   beneficiary_surname?: string;
   beneficiary_name: string;
+  beneficiary_id_number?: string;
   beneficiary_email?: string;
   beneficiary_phone?: string;
   beneficiary_address?: string;

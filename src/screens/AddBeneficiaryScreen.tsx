@@ -22,7 +22,7 @@ import AssetService from '../services/assetService';
 import PolicyService from '../services/policyService';
 import BeneficiaryService from '../services/beneficiaryService';
 import WillService from '../services/willService';
-import UserService from '../services/userService';
+import UserService, { sanitizeSouthAfricanIdNumber, isValidSouthAfricanIdNumber } from '../services/userService';
 import ExecutorService from '../services/executorService';
 import { generateWillHTML, saveWillHTML } from '../utils/willGenerator';
 import Toast from '../components/Toast';
@@ -99,6 +99,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
     beneficiaryName: '',
     beneficiaryEmail: '',
     beneficiaryPhone: '',
+    beneficiaryIdNumber: '',
     beneficiaryAddress: '',
     relationshipToUser: '',
     beneficiaryPercentage: '',
@@ -110,12 +111,13 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
   const [policies, setPolicies] = useState<PolicyInformation[]>([]);
   const [assetBeneficiaries, setAssetBeneficiaries] = useState<Record<string, any[]>>({});
   const [policyBeneficiaries, setPolicyBeneficiaries] = useState<Record<string, any[]>>({});
+  const [assetDraftAssignments, setAssetDraftAssignments] = useState<Record<string, Record<string, boolean>>>({});
+  const [policyDraftAssignments, setPolicyDraftAssignments] = useState<Record<string, Record<string, boolean>>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showGuidedExplainer, setShowGuidedExplainer] = useState(false);
   const [dontShowGuidedExplainerAgain, setDontShowGuidedExplainerAgain] = useState(false);
-  const returnToRoute = route?.params?.returnTo;
   const fromGuidedFlow = route?.params?.fromGuidedFlow ?? false;
 
   const totalSteps = 3;
@@ -156,6 +158,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
     phone: string;
     address: string;
     relationship: string;
+  idNumber: string;
   };
 
   const [additionalBeneficiaries, setAdditionalBeneficiaries] = useState<AdditionalBeneficiaryForm[]>([]);
@@ -169,6 +172,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
     phone: '',
     relationship: '',
     address: '',
+    idNumber: '',
   });
   const [inlineAdding, setInlineAdding] = useState(false);
   const [assetAllocations, setAssetAllocations] = useState<Record<string, Record<string, number>>>({});
@@ -184,6 +188,93 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
   const [showBeneficiarySelectionModal, setShowBeneficiarySelectionModal] = useState(false);
   const [beneficiarySelectionTarget, setBeneficiarySelectionTarget] = useState<{ type: 'asset' | 'policy'; id: string } | null>(null);
   const [allBeneficiaries, setAllBeneficiaries] = useState<any[]>([]);
+  const [beneficiaryReviewExpanded, setBeneficiaryReviewExpanded] = useState<Record<string, boolean>>({});
+  const prefillBeneficiaryForm = () => {
+    const formattedPrimaryPhone = formatSAPhoneNumber('0821112233');
+    const formattedAdditionalPhone = formatSAPhoneNumber('0715558899');
+    const formattedSecondAdditionalPhone = formatSAPhoneNumber('0830001122');
+    const primaryId = sanitizeSouthAfricanIdNumber('9001015809087');
+    const additionalIdOne = sanitizeSouthAfricanIdNumber('9203036809081');
+    const additionalIdTwo = sanitizeSouthAfricanIdNumber('9507074809085');
+
+    const newAdditional: AdditionalBeneficiaryForm[] = [
+      {
+        id: createTempId(),
+        expanded: true,
+        firstName: 'Sipho',
+        surname: 'Mabaso',
+        email: 'sipho.mabaso@example.com',
+        phone: formattedAdditionalPhone,
+        address: '15 Jacaranda Street, Pretoria',
+        relationship: 'Cousin',
+        idNumber: additionalIdOne,
+      },
+      {
+        id: createTempId(),
+        expanded: true,
+        firstName: 'Thandi',
+        surname: 'Nkosi',
+        email: 'thandi.nkosi@example.com',
+        phone: formattedSecondAdditionalPhone,
+        address: '88 Pine Avenue, Bloemfontein',
+        relationship: 'Friend',
+        idNumber: additionalIdTwo,
+      },
+    ];
+
+    const assetSelections = assets.slice(0, 2).map(asset => asset.asset_id);
+    const policySelections = policies.slice(0, 1).map(policy => policy.policy_id);
+    const beneficiaryKeys = ['primary', ...newAdditional.map(entry => entry.id)];
+
+    setFormData(prev => ({
+      ...prev,
+      beneficiaryFirstName: 'Anele',
+      beneficiarySurname: 'Dlamini',
+      beneficiaryName: 'Anele Dlamini',
+      beneficiaryEmail: 'anele.dlamini@example.com',
+      beneficiaryPhone: formattedPrimaryPhone,
+      beneficiaryIdNumber: primaryId,
+      beneficiaryAddress: '21 Protea Road, Durban North',
+      relationshipToUser: 'Sister',
+      beneficiaryPercentage: '',
+      selectedAssets: assetSelections,
+      selectedPolicies: policySelections,
+    }));
+
+    setPrimaryRelationshipOption('sibling');
+    setAdditionalBeneficiaries(newAdditional);
+    setAdditionalRelationshipOptions(
+      newAdditional.reduce<Record<string, string>>((acc, entry, index) => {
+        acc[entry.id] = index === 0 ? 'cousin' : 'friend';
+        return acc;
+      }, {})
+    );
+    setAdditionalRelationshipDropdowns({});
+
+    if (assetSelections.length > 0) {
+      const newAssignments = assetSelections.reduce<Record<string, Record<string, boolean>>>((acc, assetId) => {
+        acc[assetId] = {};
+        beneficiaryKeys.forEach(key => {
+          acc[assetId][key] = true;
+        });
+        return acc;
+      }, {});
+      setAssetDraftAssignments(newAssignments);
+    }
+
+    if (policySelections.length > 0) {
+      const newPolicyAssignments = policySelections.reduce<Record<string, Record<string, boolean>>>((acc, policyId) => {
+        acc[policyId] = {};
+        beneficiaryKeys.forEach(key => {
+          acc[policyId][key] = true;
+        });
+        return acc;
+      }, {});
+      setPolicyDraftAssignments(newPolicyAssignments);
+    }
+
+    setCurrentStep(0);
+  };
 
   const hasAdditionalData = (entry: AdditionalBeneficiaryForm) =>
     entry.firstName.trim() ||
@@ -191,7 +282,8 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
     entry.email.trim() ||
     entry.phone.trim() ||
     entry.address.trim() ||
-    entry.relationship.trim();
+    entry.relationship.trim() ||
+    entry.idNumber.trim();
 
   const activeAdditionalBeneficiaries = useMemo(
     () => additionalBeneficiaries.filter(entry => hasAdditionalData(entry)),
@@ -207,6 +299,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
         surname: formData.beneficiarySurname.trim(),
         email: formData.beneficiaryEmail.trim(),
         phone: formData.beneficiaryPhone.trim(),
+        idNumber: sanitizeSouthAfricanIdNumber(formData.beneficiaryIdNumber),
         address: formData.beneficiaryAddress.trim(),
         relationship: formData.relationshipToUser.trim(),
         displayName:
@@ -224,6 +317,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
         surname: entry.surname.trim(),
         email: entry.email.trim(),
         phone: entry.phone.trim(),
+        idNumber: sanitizeSouthAfricanIdNumber(entry.idNumber.trim()),
         address: entry.address.trim(),
         relationship: entry.relationship.trim(),
         displayName: `${entry.firstName.trim()} ${entry.surname.trim()}`.trim() || `Beneficiary ${index + 2}`,
@@ -241,6 +335,146 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
     formData.relationshipToUser,
     activeAdditionalBeneficiaries,
   ]);
+
+  const draftBeneficiariesForModal = useMemo(
+    () =>
+      beneficiaryDrafts.filter(
+        beneficiary => beneficiary.firstName.trim() || beneficiary.surname.trim()
+      ),
+    [beneficiaryDrafts]
+  );
+
+  const isDraftAssignedToTarget = (
+    target: { type: 'asset' | 'policy'; id: string } | null,
+    beneficiaryKey: string
+  ): boolean => {
+    if (!target) {
+      return false;
+    }
+    if (target.type === 'asset') {
+      return assetDraftAssignments[target.id]?.[beneficiaryKey] ?? false;
+    }
+    return policyDraftAssignments[target.id]?.[beneficiaryKey] ?? false;
+  };
+
+  const toggleDraftAssignmentForTarget = (beneficiaryKey: string) => {
+    if (!beneficiarySelectionTarget) {
+      return;
+    }
+
+    if (beneficiarySelectionTarget.type === 'asset') {
+      setAssetDraftAssignments(prev => {
+        const updated = { ...prev };
+        const currentAssignments = { ...(updated[beneficiarySelectionTarget.id] || {}) };
+        currentAssignments[beneficiaryKey] = !(
+          currentAssignments[beneficiaryKey] ?? false
+        );
+        updated[beneficiarySelectionTarget.id] = currentAssignments;
+        return updated;
+      });
+    } else {
+      setPolicyDraftAssignments(prev => {
+        const updated = { ...prev };
+        const currentAssignments = { ...(updated[beneficiarySelectionTarget.id] || {}) };
+        currentAssignments[beneficiaryKey] = !(
+          currentAssignments[beneficiaryKey] ?? false
+        );
+        updated[beneficiarySelectionTarget.id] = currentAssignments;
+        return updated;
+      });
+    }
+  };
+
+  useEffect(() => {
+    setBeneficiaryReviewExpanded(prev => {
+      const updated: Record<string, boolean> = { ...prev };
+      beneficiaryDrafts.forEach(beneficiary => {
+        if (updated[beneficiary.key] === undefined) {
+          updated[beneficiary.key] = true;
+        }
+      });
+      Object.keys(updated).forEach(key => {
+        if (!beneficiaryDrafts.some(beneficiary => beneficiary.key === key)) {
+          delete updated[key];
+        }
+      });
+      return updated;
+    });
+  }, [beneficiaryDrafts]);
+
+  useEffect(() => {
+    setAssetDraftAssignments(prev => {
+      const updated: Record<string, Record<string, boolean>> = { ...prev };
+
+      // Remove deselected assets
+      Object.keys(updated).forEach(assetId => {
+        if (!formData.selectedAssets.includes(assetId)) {
+          delete updated[assetId];
+        }
+      });
+
+      formData.selectedAssets.forEach((assetId, index) => {
+        if (!updated[assetId]) {
+          updated[assetId] = {};
+        }
+
+        // Ensure every draft beneficiary has an entry
+        beneficiaryDrafts.forEach(beneficiary => {
+          if (updated[assetId][beneficiary.key] === undefined) {
+            // Auto assign drafts to the first selected asset to maintain default behavior
+            updated[assetId][beneficiary.key] = index === 0;
+          }
+        });
+
+        // Remove beneficiaries that no longer exist
+        Object.keys(updated[assetId]).forEach(key => {
+          if (!beneficiaryDrafts.some(ben => ben.key === key)) {
+            delete updated[assetId][key];
+          }
+        });
+      });
+
+      return updated;
+    });
+  }, [formData.selectedAssets, beneficiaryDrafts]);
+
+  useEffect(() => {
+    setPolicyDraftAssignments(prev => {
+      const updated: Record<string, Record<string, boolean>> = { ...prev };
+
+      Object.keys(updated).forEach(policyId => {
+        if (!formData.selectedPolicies.includes(policyId)) {
+          delete updated[policyId];
+        }
+      });
+
+      formData.selectedPolicies.forEach((policyId, index) => {
+        if (!updated[policyId]) {
+          updated[policyId] = {};
+        }
+
+        beneficiaryDrafts.forEach(beneficiary => {
+          if (updated[policyId][beneficiary.key] === undefined) {
+            updated[policyId][beneficiary.key] = index === 0;
+          }
+        });
+
+        Object.keys(updated[policyId]).forEach(key => {
+          if (!beneficiaryDrafts.some(ben => ben.key === key)) {
+            delete updated[policyId][key];
+          }
+        });
+      });
+
+      return updated;
+    });
+  }, [formData.selectedPolicies, beneficiaryDrafts]);
+  const toggleBeneficiaryReviewCard = (key: string) => {
+    setBeneficiaryReviewExpanded(prev => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
 
   const beneficiaryKeysSignature = useMemo(
     () => beneficiaryDrafts.map(ben => ben.key).join('|'),
@@ -272,12 +506,14 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
 
       // Add new beneficiaries being added
       beneficiaryDrafts.forEach((ben) => {
-        combinedList.push({
-          key: ben.key,
-          label: ben.label,
-          displayName: ben.displayName,
-          isExisting: false,
-        });
+        if (assetDraftAssignments[assetId]?.[ben.key]) {
+          combinedList.push({
+            key: ben.key,
+            label: ben.label,
+            displayName: ben.displayName,
+            isExisting: false,
+          });
+        }
       });
 
       // Add existing beneficiaries linked to this asset
@@ -299,7 +535,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
     });
 
     return combined;
-  }, [formData.selectedAssets, beneficiaryDrafts, assetBeneficiaries]);
+  }, [formData.selectedAssets, beneficiaryDrafts, assetBeneficiaries, assetDraftAssignments]);
 
   useEffect(() => {
     setAssetAllocations(prev => {
@@ -338,8 +574,9 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
         });
 
         // Get valid new beneficiaries (those that exist in beneficiaryDrafts)
-        const validNewBeneficiaries = beneficiaryDrafts.filter(ben => 
-          ben.firstName.trim() || ben.surname.trim()
+        const validNewBeneficiaries = beneficiaryDrafts.filter(ben =>
+          (assetDraftAssignments[assetId]?.[ben.key]) &&
+          (ben.firstName.trim() || ben.surname.trim())
         );
 
         const totalBeneficiaries = validNewBeneficiaries.length + existingBeneficiaries.length;
@@ -393,7 +630,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
 
       return updated;
     });
-  }, [beneficiaryKeysSignature, selectedAssetsSignature, combinedBeneficiariesForAsset, assetBeneficiaries]);
+  }, [beneficiaryKeysSignature, selectedAssetsSignature, combinedBeneficiariesForAsset, assetBeneficiaries, assetDraftAssignments]);
 
   const createTempId = () => Math.random().toString(36).substring(2, 11);
 
@@ -566,6 +803,10 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
         (updated as any)[field] = formatPhoneInput(value as string);
         return updated;
       }
+      if (field === 'beneficiaryIdNumber') {
+        (updated as any)[field] = sanitizeSouthAfricanIdNumber(value as string);
+        return updated;
+      }
 
       (updated as any)[field] = value;
 
@@ -692,6 +933,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
       phone: '',
       relationship: '',
       address: '',
+      idNumber: '',
     });
     setInlineRelationshipOption('');
     setInlineRelationshipDropdownVisible(false);
@@ -854,6 +1096,16 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
     }
   };
 
+  const handleRemoveExistingLink = (type: 'asset' | 'policy', id: string, beneficiaryId: string) => {
+    const existingList = type === 'asset'
+      ? assetBeneficiaries[id] || []
+      : policyBeneficiaries[id] || [];
+    const beneficiary = existingList.find((ben: any) => ben.beneficiary_id === beneficiaryId);
+    if (beneficiary) {
+      handleDelinkBeneficiary(type, id, beneficiary);
+    }
+  };
+
   const cancelInlineAdd = () => {
     setInlineAddTarget(null);
     setInlineBeneficiaryForm({
@@ -863,6 +1115,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
       phone: '',
       relationship: '',
       address: '',
+      idNumber: '',
     });
     setInlineRelationshipOption('');
     setInlineRelationshipDropdownVisible(false);
@@ -910,7 +1163,12 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
   const updateInlineBeneficiaryField = (field: keyof typeof inlineBeneficiaryForm, value: string) => {
     setInlineBeneficiaryForm(prev => ({
       ...prev,
-      [field]: field === 'phone' ? formatPhoneInput(value) : value,
+      [field]:
+        field === 'phone'
+          ? formatPhoneInput(value)
+          : field === 'idNumber'
+          ? sanitizeSouthAfricanIdNumber(value)
+          : value,
     }));
   };
 
@@ -939,7 +1197,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
   const handleInlineBeneficiarySave = async () => {
     if (!inlineAddTarget) return;
 
-    const { firstName, surname, email, phone, relationship, address } = inlineBeneficiaryForm;
+    const { firstName, surname, email, phone, relationship, address, idNumber } = inlineBeneficiaryForm;
 
     if (!firstName.trim()) {
       setToast({ message: 'Please enter beneficiary first name.', type: 'error' });
@@ -973,6 +1231,14 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
       setToast({ message: 'Please enter beneficiary address.', type: 'error' });
       return;
     }
+    if (!idNumber.trim()) {
+      setToast({ message: 'Please enter beneficiary ID number.', type: 'error' });
+      return;
+    }
+    if (!isValidSouthAfricanIdNumber(idNumber.trim())) {
+      setToast({ message: 'Beneficiary ID number must be 13 digits.', type: 'error' });
+      return;
+    }
 
     if (!currentUser) {
       setToast({ message: 'User not authenticated', type: 'error' });
@@ -982,6 +1248,8 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
     setInlineAdding(true);
     try {
       const formattedPhone = formatSAPhoneNumber(phone.trim());
+      const sanitizedIdNumber = sanitizeSouthAfricanIdNumber(idNumber.trim());
+
       const beneficiaryId = await BeneficiaryService.createBeneficiary({
         user_id: currentUser.uid,
         beneficiary_first_name: firstName.trim(),
@@ -991,6 +1259,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
         beneficiary_phone: formattedPhone,
         beneficiary_address: address.trim(),
         relationship_to_user: relationship.trim(),
+        beneficiary_id_number: sanitizedIdNumber,
         is_primary: false,
         is_verified: false,
         verification_token: '',
@@ -1126,6 +1395,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
               beneficiary_phone: formattedPhone,
               relationship_to_user: relationship.trim(),
               beneficiary_address: address.trim(),
+              beneficiary_id_number: sanitizedIdNumber,
             },
           ],
         }));
@@ -1193,6 +1463,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
         phone: '',
         address: '',
         relationship: '',
+        idNumber: '',
       },
     ]);
   };
@@ -1215,7 +1486,12 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
         entry.id === id
           ? {
               ...entry,
-              [field]: field === 'phone' ? formatPhoneInput(value) : value,
+              [field]:
+                field === 'phone'
+                  ? formatPhoneInput(value)
+                  : field === 'idNumber'
+                  ? sanitizeSouthAfricanIdNumber(value)
+                  : value,
             }
           : entry
       )
@@ -1268,6 +1544,14 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
         setToast({ message: 'Please enter beneficiary address', type: 'error' });
         return;
       }
+      if (!formData.beneficiaryIdNumber.trim()) {
+        setToast({ message: 'Please enter beneficiary ID number', type: 'error' });
+        return;
+      }
+      if (!isValidSouthAfricanIdNumber(formData.beneficiaryIdNumber.trim())) {
+        setToast({ message: 'Beneficiary ID number must be 13 digits', type: 'error' });
+        return;
+      }
 
       for (const additional of additionalBeneficiaries) {
         const hasAnyField =
@@ -1276,7 +1560,8 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
           additional.relationship.trim() ||
           additional.email.trim() ||
           additional.phone.trim() ||
-          additional.address.trim();
+          additional.address.trim() ||
+          additional.idNumber.trim();
 
         if (hasAnyField) {
           if (!additional.firstName.trim()) {
@@ -1335,6 +1620,20 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
             });
             return;
           }
+          if (!additional.idNumber.trim()) {
+            setToast({
+              message: 'Please enter ID numbers for all additional beneficiaries.',
+              type: 'error',
+            });
+            return;
+          }
+          if (!isValidSouthAfricanIdNumber(additional.idNumber.trim())) {
+            setToast({
+              message: 'Additional beneficiary ID numbers must be 13 digits.',
+              type: 'error',
+            });
+            return;
+          }
         }
       }
     }
@@ -1367,6 +1666,25 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
           const assetName = assets.find(a => a.asset_id === assetId)?.asset_name || 'Asset';
           setToast({
             message: `Assign at least one beneficiary to ${assetName}.`,
+            type: 'error',
+          });
+          return;
+        }
+      }
+    }
+
+    if (currentStep === 1 && formData.selectedPolicies.length > 0) {
+      for (const policyId of formData.selectedPolicies) {
+        const assignments = policyDraftAssignments[policyId] || {};
+        const hasAssignedDraft = Object.values(assignments).some(Boolean);
+        const hasExisting = (policyBeneficiaries[policyId] || []).length > 0;
+
+        if (!hasAssignedDraft && !hasExisting) {
+          const policyName =
+            policies.find(policy => policy.policy_id === policyId)?.policy_number ||
+            'Policy';
+          setToast({
+            message: `Link at least one beneficiary to ${policyName}.`,
             type: 'error',
           });
           return;
@@ -1442,6 +1760,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
             beneficiary.displayName,
           email: beneficiary.email,
           phone: beneficiary.phone,
+        idNumber: beneficiary.idNumber,
           address: beneficiary.address,
           relationship: beneficiary.relationship,
           isPrimary: index === 0,
@@ -1459,8 +1778,12 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
           ? formatSAPhoneNumber(beneficiary.phone)
           : '';
 
-        const beneficiaryId = await BeneficiaryService.createBeneficiary({
-          user_id: currentUser.uid,
+        const sanitizedIdNumber = beneficiary.idNumber
+          ? sanitizeSouthAfricanIdNumber(beneficiary.idNumber)
+          : '';
+
+      const beneficiaryId = await BeneficiaryService.createBeneficiary({
+        user_id: currentUser.uid,
           beneficiary_first_name: beneficiary.firstName,
           beneficiary_surname: beneficiary.surname,
           beneficiary_name: beneficiary.name,
@@ -1468,36 +1791,35 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
           beneficiary_phone: formattedPhone || undefined,
           beneficiary_address: beneficiary.address || undefined,
           relationship_to_user: beneficiary.relationship || formData.relationshipToUser.trim(),
+          beneficiary_id_number: sanitizedIdNumber || undefined,
           is_primary: beneficiary.isPrimary,
-          is_verified: false,
-          verification_token: '',
-        });
+        is_verified: false,
+        verification_token: '',
+      });
 
         const assetLinkPromises = formData.selectedAssets
+          .filter(assetId => assetDraftAssignments[assetId]?.[beneficiary.key])
           .map(assetId => {
             const allocation = assetAllocations[assetId]?.[beneficiary.key] || 0;
             if (allocation <= 0) {
               return null;
             }
-            
-            // Check if this beneficiary is already linked to this asset
+
             const existing = assetBeneficiaries[assetId] || [];
             const alreadyLinked = existing.some((b: any) => b.beneficiary_id === beneficiaryId);
-            
+
             if (alreadyLinked) {
-              // Update existing link
               return BeneficiaryService.updateAssetBeneficiaryAllocation(
-                assetId,
-                beneficiaryId,
+          assetId,
+          beneficiaryId,
                 allocation
               );
             } else {
-              // Create new link
               return BeneficiaryService.linkAssetToBeneficiary(
                 assetId,
                 beneficiaryId,
                 allocation,
-                'equal_split'
+          'equal_split'
               );
             }
           })
@@ -1522,11 +1844,13 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
           })
           .filter(Boolean) as Promise<any>[];
 
-        const policyLinkPromises = formData.selectedPolicies.map(policyId =>
+        const policyLinkPromises = formData.selectedPolicies
+          .filter(policyId => policyDraftAssignments[policyId]?.[beneficiary.key])
+          .map(policyId =>
         BeneficiaryService.linkPolicyToBeneficiary(
           policyId,
           beneficiaryId,
-            100,
+              100,
           'equal_split'
         )
       );
@@ -1596,28 +1920,9 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
 
       setToast({ message: 'Beneficiary added successfully!', type: 'success' });
       
-      if (fromGuidedFlow) {
-        // Navigate to ViewWillScreen during guided flow
-        setTimeout(() => {
-          navigation.navigate('ViewWill');
-        }, 800);
-        return;
-      }
-      
-      if (returnToRoute) {
-        setTimeout(() => {
-          navigation.reset({
-            index: 0,
-            routes: [{ name: returnToRoute }],
-          });
-        }, 800);
-        return;
-      }
-
-      // Navigate back after a short delay
       setTimeout(() => {
-        navigation.goBack();
-      }, 1500);
+        navigation.navigate('ViewWill');
+      }, 800);
     } catch (error: any) {
       console.error('Error saving beneficiary:', error);
       setToast({ message: 'Failed to save beneficiary', type: 'error' });
@@ -1748,10 +2053,10 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                 ref={primaryRelationshipInputRef}
                 style={styles.input}
                 placeholder="State Other relationship"
-                placeholderTextColor={theme.colors.placeholder}
-                value={formData.relationshipToUser}
-                onChangeText={(value) => updateFormData('relationshipToUser', value)}
-              />
+              placeholderTextColor={theme.colors.placeholder}
+              value={formData.relationshipToUser}
+              onChangeText={(value) => updateFormData('relationshipToUser', value)}
+            />
             )}
 
             <TextInput
@@ -1771,6 +2076,16 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
               value={getDisplayPhone(formData.beneficiaryPhone)}
               onChangeText={(value) => updateFormData('beneficiaryPhone', value)}
               keyboardType="phone-pad"
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="ID Number (13 digits)"
+              placeholderTextColor={theme.colors.placeholder}
+              value={formData.beneficiaryIdNumber}
+              onChangeText={(value) => updateFormData('beneficiaryIdNumber', value)}
+              keyboardType="number-pad"
+              maxLength={13}
             />
 
             <TextInput
@@ -1923,6 +2238,17 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                       />
                       <TextInput
                         style={styles.input}
+                        placeholder="ID Number (13 digits)"
+                        placeholderTextColor={theme.colors.placeholder}
+                        value={entry.idNumber}
+                        onChangeText={(value) =>
+                          updateAdditionalBeneficiaryField(entry.id, 'idNumber', value)
+                        }
+                        keyboardType="number-pad"
+                        maxLength={13}
+                      />
+                      <TextInput
+                        style={styles.input}
                         placeholder="Address"
                         placeholderTextColor={theme.colors.placeholder}
                         value={entry.address}
@@ -1960,7 +2286,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
         return (
           <Animated.View style={[styles.stepContainer, animatedStyle]}>
             <View style={styles.stepTitleContainer}>
-              <Text style={styles.stepTitle}>Link Assets</Text>
+            <Text style={styles.stepTitle}>Link Assets</Text>
             </View>
             <TouchableOpacity
               style={[styles.addNewButton, styles.addAssetButtonStandalone]}
@@ -2000,22 +2326,22 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                 {assets.map((asset) => (
                   <View key={asset.asset_id}>
                     <View style={styles.selectionOptionWithActions}>
-                      <TouchableOpacity
-                        style={[
-                          styles.selectionOption,
-                          formData.selectedAssets.includes(asset.asset_id) && styles.selectionOptionActive,
-                        ]}
-                        onPress={() => toggleAsset(asset.asset_id)}
-                      >
-                        <Ionicons
-                          name={formData.selectedAssets.includes(asset.asset_id) ? 'checkbox' : 'checkbox-outline'}
-                          size={24}
-                          color={formData.selectedAssets.includes(asset.asset_id) ? theme.colors.primary : theme.colors.border}
-                        />
-                        <View style={styles.selectionTextContainer}>
-                          <Text style={styles.selectionText}>{asset.asset_name}</Text>
-                          <Text style={styles.selectionSubtext}>{asset.asset_type.replace('_', ' ')}</Text>
-                        </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.selectionOption,
+                      formData.selectedAssets.includes(asset.asset_id) && styles.selectionOptionActive,
+                    ]}
+                    onPress={() => toggleAsset(asset.asset_id)}
+                  >
+                    <Ionicons
+                      name={formData.selectedAssets.includes(asset.asset_id) ? 'checkbox' : 'checkbox-outline'}
+                      size={24}
+                      color={formData.selectedAssets.includes(asset.asset_id) ? theme.colors.primary : theme.colors.border}
+                    />
+                    <View style={styles.selectionTextContainer}>
+                      <Text style={styles.selectionText}>{asset.asset_name}</Text>
+                      <Text style={styles.selectionSubtext}>{asset.asset_type.replace('_', ' ')}</Text>
+                    </View>
                       </TouchableOpacity>
                       <View style={styles.actionIconsContainer}>
                         <TouchableOpacity
@@ -2132,12 +2458,12 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                                       onPress={() => handleSelectInlineRelationship(option.value, option.label)}
                                     >
                                       <Text style={styles.dropdownOptionText}>{option.label}</Text>
-                                    </TouchableOpacity>
-                                  ))}
-                                </ScrollView>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
                               </View>
                             )}
-                          </View>
+            </View>
 
                           {inlineRelationshipOption === 'other' && (
                             <TextInput
@@ -2166,6 +2492,15 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                             onChangeText={(value) => updateInlineBeneficiaryField('phone', value)}
                             keyboardType="phone-pad"
                           />
+                          <TextInput
+                            style={styles.input}
+                            placeholder="ID Number (13 digits)"
+                            placeholderTextColor={theme.colors.placeholder}
+                            value={inlineBeneficiaryForm.idNumber}
+                            onChangeText={(value) => updateInlineBeneficiaryField('idNumber', value)}
+                            keyboardType="number-pad"
+                            maxLength={13}
+                          />
                         <TextInput
                           style={styles.input}
                           placeholder="Address"
@@ -2191,8 +2526,8 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                                 {inlineAdding ? 'Saving...' : 'Save & Link'}
                               </Text>
                             </TouchableOpacity>
-                          </View>
-                        </View>
+              </View>
+              </View>
                       )}
                     {formData.selectedAssets.includes(asset.asset_id) && (
                       <View style={styles.allocationContainer}>
@@ -2235,6 +2570,16 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                             {beneficiary.isExisting && (
                               <Text style={styles.existingBeneficiaryBadge}>Existing</Text>
                             )}
+                            {beneficiary.isExisting && beneficiary.beneficiary_id && (
+                              <TouchableOpacity
+                                style={styles.allocationRemoveButton}
+                                onPress={() =>
+                                  handleRemoveExistingLink('asset', asset.asset_id, beneficiary.beneficiary_id!)
+                                }
+                              >
+                                <Ionicons name="trash-outline" size={20} color={theme.colors.error} />
+                              </TouchableOpacity>
+                            )}
                           </View>
                         ))}
                         {Math.abs(getAllocationTotal(asset.asset_id) - 100) > 0.5 && (
@@ -2252,28 +2597,28 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
             {!loading && policies.length > 0 && (
               <View style={styles.policySection}>
                 <Text style={styles.sectionDividerTitle}>Policies</Text>
-                <ScrollView style={styles.selectionContainer} nestedScrollEnabled>
-                  {policies.map((policy) => (
+              <ScrollView style={styles.selectionContainer} nestedScrollEnabled>
+                {policies.map((policy) => (
                     <View key={policy.policy_id}>
                       <View style={styles.selectionOptionWithActions}>
-                        <TouchableOpacity
-                          style={[
-                            styles.selectionOption,
-                            formData.selectedPolicies.includes(policy.policy_id) && styles.selectionOptionActive,
-                          ]}
-                          onPress={() => togglePolicy(policy.policy_id)}
-                        >
-                          <Ionicons
-                            name={formData.selectedPolicies.includes(policy.policy_id) ? 'checkbox' : 'checkbox-outline'}
-                            size={24}
-                            color={formData.selectedPolicies.includes(policy.policy_id) ? theme.colors.primary : theme.colors.border}
-                          />
-                          <View style={styles.selectionTextContainer}>
-                            <Text style={styles.selectionText}>{policy.policy_number}</Text>
-                            <Text style={styles.selectionSubtext}>
-                              {policy.insurance_company} - {policy.policy_type.replace('_', ' ')}
-                            </Text>
-                          </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.selectionOption,
+                      formData.selectedPolicies.includes(policy.policy_id) && styles.selectionOptionActive,
+                    ]}
+                    onPress={() => togglePolicy(policy.policy_id)}
+                  >
+                    <Ionicons
+                      name={formData.selectedPolicies.includes(policy.policy_id) ? 'checkbox' : 'checkbox-outline'}
+                      size={24}
+                      color={formData.selectedPolicies.includes(policy.policy_id) ? theme.colors.primary : theme.colors.border}
+                    />
+                    <View style={styles.selectionTextContainer}>
+                      <Text style={styles.selectionText}>{policy.policy_number}</Text>
+                      <Text style={styles.selectionSubtext}>
+                        {policy.insurance_company} - {policy.policy_type.replace('_', ' ')}
+                      </Text>
+                    </View>
                         </TouchableOpacity>
                         <View style={styles.actionIconsContainer}>
                           <TouchableOpacity
@@ -2390,9 +2735,9 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                                         onPress={() => handleSelectInlineRelationship(option.value, option.label)}
                                       >
                                         <Text style={styles.dropdownOptionText}>{option.label}</Text>
-                                      </TouchableOpacity>
-                                    ))}
-                                  </ScrollView>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
                                 </View>
                               )}
                             </View>
@@ -2423,6 +2768,15 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                             value={getDisplayPhone(inlineBeneficiaryForm.phone)}
                               onChangeText={(value) => updateInlineBeneficiaryField('phone', value)}
                               keyboardType="phone-pad"
+                            />
+                            <TextInput
+                              style={styles.input}
+                              placeholder="ID Number (13 digits)"
+                              placeholderTextColor={theme.colors.placeholder}
+                              value={inlineBeneficiaryForm.idNumber}
+                              onChangeText={(value) => updateInlineBeneficiaryField('idNumber', value)}
+                              keyboardType="number-pad"
+                              maxLength={13}
                             />
                             <TextInput
                               style={styles.input}
@@ -2489,7 +2843,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                     return (
                       <View key={assetId} style={styles.reviewSubSection}>
                         <Text style={styles.reviewItem}>
-                        • {asset.asset_name} ({asset.asset_type.replace('_', ' ')})
+                          • <Text style={styles.reviewItemEmphasis}>{asset.asset_name}</Text> ({asset.asset_type.replace('_', ' ')})
                       </Text>
                         {allocationEntries.length > 0 ? (
                           allocationEntries.map(entry => (
@@ -2506,33 +2860,6 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                 </View>
               )}
 
-              <View style={styles.reviewSection}>
-                <Text style={styles.reviewSectionTitle}>Beneficiaries</Text>
-                {beneficiaryDrafts.map((beneficiary) => (
-                  <View key={beneficiary.key} style={styles.beneficiaryReviewCard}>
-                    <Text style={styles.beneficiaryReviewLabel}>{beneficiary.label}</Text>
-                    <Text style={styles.reviewItem}>
-                      Name:{' '}
-                      {`${beneficiary.firstName} ${beneficiary.surname}`.trim() ||
-                        beneficiary.displayName}
-                    </Text>
-                    <Text style={styles.reviewItem}>
-                      Relationship: {beneficiary.relationship || 'Not specified'}
-                    </Text>
-                    <Text style={styles.reviewItem}>
-                      Email: {beneficiary.email || 'Not specified'}
-                    </Text>
-                    <Text style={styles.reviewItem}>
-                      Phone:{' '}
-                      {beneficiary.phone ? getDisplayPhone(beneficiary.phone) : 'Not specified'}
-                    </Text>
-                    <Text style={styles.reviewItem}>
-                      Address: {beneficiary.address || 'Not specified'}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-
               {formData.selectedPolicies.length > 0 && (
                 <View style={styles.reviewSection}>
                   <Text style={styles.reviewSectionTitle}>Assigned Policies ({formData.selectedPolicies.length})</Text>
@@ -2540,12 +2867,58 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                     const policy = policies.find(p => p.policy_id === policyId);
                     return policy ? (
                       <Text key={policyId} style={styles.reviewItem}>
-                        • {policy.policy_number} - {policy.insurance_company}
+                        • <Text style={styles.reviewItemEmphasis}>{policy.policy_number}</Text> - {policy.insurance_company}
                       </Text>
                     ) : null;
                   })}
                 </View>
               )}
+
+              <View style={styles.reviewSection}>
+                <Text style={styles.reviewSectionTitle}>Beneficiaries</Text>
+                {beneficiaryDrafts.map((beneficiary) => (
+                  <View key={beneficiary.key} style={styles.beneficiaryReviewCard}>
+                    <TouchableOpacity
+                      style={styles.beneficiaryReviewHeader}
+                      onPress={() => toggleBeneficiaryReviewCard(beneficiary.key)}
+                      activeOpacity={0.8}
+                    >
+                      <View>
+                        <Text style={styles.beneficiaryReviewLabel}>{beneficiary.label}</Text>
+                        <Text style={styles.beneficiaryReviewSummary}>
+                          {`${beneficiary.firstName} ${beneficiary.surname}`.trim() ||
+                            beneficiary.displayName}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        name={beneficiaryReviewExpanded[beneficiary.key] ? 'chevron-up' : 'chevron-down'}
+                        size={20}
+                        color={theme.colors.textSecondary}
+                      />
+                    </TouchableOpacity>
+                    {beneficiaryReviewExpanded[beneficiary.key] && (
+                      <View style={styles.beneficiaryReviewBody}>
+                        <Text style={styles.reviewItem}>
+                          Relationship: {beneficiary.relationship || 'Not specified'}
+                        </Text>
+                        <Text style={styles.reviewItem}>
+                          Email: {beneficiary.email || 'Not specified'}
+                        </Text>
+                        <Text style={styles.reviewItem}>
+                          Phone:{' '}
+                          {beneficiary.phone ? getDisplayPhone(beneficiary.phone) : 'Not specified'}
+                        </Text>
+                        <Text style={styles.reviewItem}>
+                          ID Number: {beneficiary.idNumber || 'Not specified'}
+                        </Text>
+                        <Text style={styles.reviewItem}>
+                          Address: {beneficiary.address || 'Not specified'}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </View>
             </ScrollView>
           </Animated.View>
         );
@@ -2556,6 +2929,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
   };
 
   return (
+    <View style={styles.mainWrapper}>
     <SafeAreaView style={styles.safeArea}>
       {toast && (
         <Toast
@@ -2570,9 +2944,13 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} disabled={saving}>
-            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-          </TouchableOpacity>
+          {currentStep > 0 ? (
+            <TouchableOpacity onPress={previousStep} disabled={saving}>
+              <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.headerSpacer} />
+          )}
           <Text style={styles.headerTitle}>Add Beneficiary</Text>
           <TouchableOpacity
             onPress={() => navigation.navigate('Dashboard')}
@@ -2701,6 +3079,55 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
               style={styles.beneficiarySelectionList}
               showsVerticalScrollIndicator={false}
             >
+              {draftBeneficiariesForModal.length > 0 && beneficiarySelectionTarget && (
+                <>
+                  <Text style={styles.beneficiarySelectionDraftHeading}>
+                    Beneficiaries from this session
+                  </Text>
+                  {draftBeneficiariesForModal.map(beneficiary => {
+                    const isLinked = isDraftAssignedToTarget(
+                      beneficiarySelectionTarget,
+                      beneficiary.key
+                    );
+                    return (
+                      <TouchableOpacity
+                        key={beneficiary.key}
+                        style={[
+                          styles.beneficiarySelectionItem,
+                          isLinked
+                            ? styles.beneficiarySelectionItemLinked
+                            : styles.beneficiarySelectionItemPending,
+                        ]}
+                        onPress={() => toggleDraftAssignmentForTarget(beneficiary.key)}
+                      >
+                        <View style={styles.beneficiarySelectionItemIcon}>
+                          <Ionicons
+                            name={isLinked ? 'checkmark-circle' : 'time-outline'}
+                            size={32}
+                            color={isLinked ? theme.colors.success : theme.colors.textSecondary}
+                          />
+                        </View>
+                        <View style={styles.beneficiarySelectionItemText}>
+                          <Text style={styles.beneficiarySelectionItemName}>
+                            {beneficiary.displayName}
+                          </Text>
+                          {beneficiary.relationship ? (
+                            <Text style={styles.beneficiarySelectionItemRelationship}>
+                              {beneficiary.relationship}
+                            </Text>
+                          ) : null}
+                          <Text style={styles.beneficiarySelectionItemLinkedText}>
+                            {isLinked
+                              ? `Linked to this ${beneficiarySelectionTarget.type}`
+                              : `Tap to link to this ${beneficiarySelectionTarget.type}`}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <View style={styles.beneficiarySelectionDraftDivider} />
+                </>
+              )}
               {allBeneficiaries.length === 0 ? (
                 <View style={styles.beneficiarySelectionEmpty}>
                   <Ionicons name="people-outline" size={48} color={theme.colors.textSecondary} />
@@ -2757,6 +3184,11 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
                             {beneficiary.relationship_to_user}
                           </Text>
                         )}
+                        {beneficiary.beneficiary_id_number && (
+                          <Text style={styles.beneficiarySelectionItemRelationship}>
+                            ID: {beneficiary.beneficiary_id_number}
+                          </Text>
+                        )}
                         {isLinked && (
                           <Text style={styles.beneficiarySelectionItemLinkedText}>
                             Already linked
@@ -2775,10 +3207,22 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
         </View>
       </Modal>
     </SafeAreaView>
+      <TouchableOpacity
+        style={styles.prefillButton}
+        onPress={prefillBeneficiaryForm}
+        accessibilityLabel="Prefill beneficiary form"
+        hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+      >
+        <Ionicons name="document-text-outline" size={20} color={theme.colors.text} />
+      </TouchableOpacity>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  mainWrapper: {
+    flex: 1,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: theme.colors.background,
@@ -2798,6 +3242,10 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.xl,
     fontWeight: theme.typography.weights.bold as any,
     color: theme.colors.text,
+  },
+  headerSpacer: {
+    width: 24,
+    height: 24,
   },
   homeButton: {
     width: 36,
@@ -3048,11 +3496,23 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.sm,
     backgroundColor: theme.colors.surface,
   },
+  beneficiaryReviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   beneficiaryReviewLabel: {
     fontSize: theme.typography.sizes.sm,
     fontWeight: theme.typography.weights.semibold as any,
     color: theme.colors.primary,
     marginBottom: theme.spacing.xs,
+  },
+  beneficiaryReviewSummary: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
+  },
+  beneficiaryReviewBody: {
+    marginTop: theme.spacing.sm,
   },
   reviewAllocationItem: {
     fontSize: theme.typography.sizes.xs,
@@ -3069,6 +3529,10 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.textSecondary,
     marginBottom: theme.spacing.xs,
+  },
+  reviewItemEmphasis: {
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
   },
   buttonContainer: {
     flexDirection: 'column',
@@ -3162,6 +3626,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: theme.spacing.md,
+  },
+  allocationRemoveButton: {
+    padding: theme.spacing.xs,
   },
   allocationRowInfo: {
     flex: 1,
@@ -3471,6 +3938,12 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: theme.colors.border,
   },
+  beneficiarySelectionDraftHeading: {
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.sm,
+  },
   beneficiarySelectionDividerText: {
     fontSize: theme.typography.sizes.sm,
     fontWeight: theme.typography.weights.semibold as any,
@@ -3517,6 +3990,19 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     backgroundColor: theme.colors.border + '40',
   },
+  beneficiarySelectionItemPending: {
+    opacity: 0.8,
+    borderColor: theme.colors.border,
+  },
+  beneficiarySelectionItemLinked: {
+    borderColor: theme.colors.success,
+    backgroundColor: theme.colors.success + '12',
+  },
+  beneficiarySelectionDraftDivider: {
+    height: 1,
+    backgroundColor: theme.colors.border,
+    marginVertical: theme.spacing.md,
+  },
   beneficiarySelectionItemIcon: {
     marginRight: theme.spacing.md,
   },
@@ -3541,6 +4027,24 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.xs,
     color: theme.colors.success,
     fontStyle: 'italic',
+  },
+  prefillButton: {
+    position: 'absolute',
+    right: theme.spacing.lg,
+    bottom: theme.spacing.lg,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    shadowColor: '#00000033',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
   },
 });
 

@@ -13,6 +13,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Modal,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
@@ -200,6 +201,25 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
   const [dontShowLinkExplainerAgain, setDontShowLinkExplainerAgain] = useState(false);
   const [linkExplainerShown, setLinkExplainerShown] = useState(false);
   const [bankListCollapsed, setBankListCollapsed] = useState(false);
+  const prefillAssetForm = () => {
+    setFormData({
+      assetName: 'Sunset Ridge Home',
+      assetType: 'property',
+      otherAssetType: '',
+      assetDescription: 'Primary residence overlooking the ocean',
+      assetValue: '3 450 000',
+      assetLocation: 'Cape Town',
+      financingStatus: 'financed',
+      financeProviderType: 'bank',
+      financeProviderName: 'Nedbank',
+      financeProviderOther: '',
+      datePurchased: '2016-05-12',
+      repaymentTerm: '240',
+      paidUpDate: '2036-05-12',
+    });
+    setBankListCollapsed(true);
+    setCurrentStep(0);
+  };
 
   const [formData, setFormData] = useState<AssetFormState>({
     assetName: '',
@@ -571,9 +591,9 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
         fadeAnim.setValue(1);
         setSaving(false);
       } else {
-        setTimeout(() => {
+      setTimeout(() => {
           navigation.navigate('Dashboard');
-        }, 1500);
+      }, 1500);
       }
     } catch (error: any) {
       setToastMessage(error.message || 'Failed to save Asset');
@@ -612,6 +632,14 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
           }),
         ]).start();
       });
+    } else {
+      navigation.goBack();
+    }
+  };
+
+  const handleHeaderBack = () => {
+    if (currentStep > 0) {
+      previousStep();
     } else {
       navigation.goBack();
     }
@@ -787,10 +815,10 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
                     )}
 
                     {formData.financeProviderName === 'Other' && (
-                      <TextInput
-                        style={styles.input}
+            <TextInput
+              style={styles.input}
                         placeholder="Enter bank name"
-                        placeholderTextColor={theme.colors.placeholder}
+              placeholderTextColor={theme.colors.placeholder}
                         value={formData.financeProviderOther}
                         onChangeText={(value) => updateFormData('financeProviderOther', value)}
                       />
@@ -808,13 +836,27 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
                   />
                 )}
 
-                <TextInput
-                  style={styles.input}
-                  placeholder="Repayment Term (e.g. 60 mths = 5 years)"
-                  placeholderTextColor={theme.colors.placeholder}
-                  value={formData.repaymentTerm}
-                  onChangeText={(value) => updateFormData('repaymentTerm', value)}
-                />
+                <View style={styles.inputWithIconContainer}>
+                  <TextInput
+                    style={[styles.input, styles.inputWithIcon]}
+                    placeholder="Repayment Term (e.g. 60 mths = 5yrs)"
+                    placeholderTextColor={theme.colors.placeholder}
+                    value={formData.repaymentTerm}
+                    onChangeText={(value) => updateFormData('repaymentTerm', value)}
+                  />
+                  <TouchableOpacity
+                    style={styles.inputIconButton}
+                    onPress={() => {
+                      Alert.alert(
+                        'Repayment Term',
+                        'Enter the repayment term in months.\n\nExample:\n• 48 months = 4 years\n• 60 months = 5 years\n• 120 months = 10 years',
+                        [{ text: 'Got it', style: 'default' }]
+                      );
+                    }}
+                  >
+                    <Ionicons name="information-circle-outline" size={20} color={theme.colors.info} />
+                  </TouchableOpacity>
+                </View>
 
                 <TextInput
                   style={styles.input}
@@ -880,12 +922,12 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
                   <Text style={styles.reviewValue}>R {formData.assetValue}</Text>
                 </View>
               )}
-              <View style={styles.reviewRow}>
+                <View style={styles.reviewRow}>
                 <Text style={styles.reviewLabel}>Financing:</Text>
                 <Text style={styles.reviewValue}>
                   {formData.financingStatus === 'financed' ? 'Financed' : 'Owned outright'}
                 </Text>
-              </View>
+                </View>
               {formData.financingStatus === 'financed' && (
                 <>
                   <View style={styles.reviewRow}>
@@ -920,15 +962,20 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
   };
 
   return (
+    <View style={styles.mainWrapper}>
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} disabled={saving}>
-            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-          </TouchableOpacity>
+          {currentStep > 0 ? (
+            <TouchableOpacity onPress={handleHeaderBack} disabled={saving}>
+              <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.headerSpacer} />
+          )}
           <Text style={styles.headerTitle}>Add Asset</Text>
           <TouchableOpacity
             onPress={() => navigation.navigate('Dashboard')}
@@ -961,19 +1008,19 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
                   >
                     Link Beneficiary
                   </Text>
-                </TouchableOpacity>
+              </TouchableOpacity>
 
-                <TouchableOpacity
+            <TouchableOpacity
                   style={styles.nextButton}
                   onPress={() => handleSaveAsset()}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color={theme.colors.buttonText} />
-                  ) : (
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color={theme.colors.buttonText} />
+              ) : (
                     <Text style={styles.nextButtonText}>Save Asset</Text>
-                  )}
-                </TouchableOpacity>
+              )}
+            </TouchableOpacity>
 
                 <TouchableOpacity
                   style={[styles.addMoreButton, saving && styles.addMoreButtonDisabled]}
@@ -1149,10 +1196,22 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
         </View>
       </Modal>
     </SafeAreaView>
+      <TouchableOpacity
+        style={styles.prefillButton}
+        onPress={prefillAssetForm}
+        accessibilityLabel="Prefill asset form"
+        hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+      >
+        <Ionicons name="document-text-outline" size={20} color={theme.colors.text} />
+      </TouchableOpacity>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  mainWrapper: {
+    flex: 1,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: theme.colors.background,
@@ -1172,6 +1231,10 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.xl,
     fontWeight: theme.typography.weights.bold as any,
     color: theme.colors.text,
+  },
+  headerSpacer: {
+    width: 24,
+    height: 24,
   },
   homeButton: {
     width: 36,
@@ -1218,6 +1281,22 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     backgroundColor: theme.colors.inputBackground,
     marginBottom: theme.spacing.md,
+  },
+  inputWithIconContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  inputWithIcon: {
+    flex: 1,
+    marginBottom: 0,
+    paddingRight: theme.spacing.xl + 24,
+  },
+  inputIconButton: {
+    position: 'absolute',
+    right: theme.spacing.lg,
+    padding: theme.spacing.xs,
+    zIndex: 1,
   },
   label: {
     fontSize: theme.typography.sizes.md,
@@ -1370,12 +1449,12 @@ const styles = StyleSheet.create({
   addMoreButton: {
     width: '100%',
     minHeight: 56,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: '#E0E0E0',
     borderRadius: theme.borderRadius.xl,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: theme.colors.primary,
+    borderColor: '#B0B0B0',
   },
   addMoreButtonDisabled: {
     opacity: 0.5,
@@ -1383,7 +1462,7 @@ const styles = StyleSheet.create({
   addMoreButtonText: {
     fontSize: theme.typography.sizes.lg,
     fontWeight: theme.typography.weights.semibold as any,
-    color: theme.colors.primary,
+    color: '#7A7A7A',
   },
   disclaimerBox: {
     flexDirection: 'row',
@@ -1530,6 +1609,24 @@ const styles = StyleSheet.create({
   modalCheckboxText: {
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.text,
+  },
+  prefillButton: {
+    position: 'absolute',
+    right: theme.spacing.lg,
+    bottom: theme.spacing.lg,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    shadowColor: '#00000033',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
   },
 });
 

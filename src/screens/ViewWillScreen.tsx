@@ -15,7 +15,7 @@ import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
 import { useAuth } from '../contexts/AuthContext';
-import UserService from '../services/userService';
+import UserService, { sanitizeSouthAfricanIdNumber, isValidSouthAfricanIdNumber } from '../services/userService';
 import ExecutorService from '../services/executorService';
 import BeneficiaryService from '../services/beneficiaryService';
 import AssetService from '../services/assetService';
@@ -67,7 +67,32 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
     beneficiary_phone: '',
     beneficiary_address: '',
     relationship_to_user: '',
+    beneficiary_id_number: '',
   });
+
+  const getLinkedBeneficiaries = (
+    allBeneficiaries: BeneficiaryInformation[],
+    assetLinks: Record<string, Record<string, number>>,
+    policyLinks: Record<string, Record<string, number>>
+  ): BeneficiaryInformation[] => {
+    const linkedIds = new Set<string>();
+
+    const collectLinkedIds = (linksMap: Record<string, Record<string, number>>) => {
+      Object.values(linksMap).forEach(linkEntries => {
+        Object.entries(linkEntries).forEach(([beneficiaryId, allocation]) => {
+          if (typeof allocation === 'number' && allocation > 0) {
+            linkedIds.add(beneficiaryId);
+          }
+        });
+      });
+    };
+
+    collectLinkedIds(assetLinks);
+    collectLinkedIds(policyLinks);
+
+    const filtered = allBeneficiaries.filter(ben => linkedIds.has(ben.beneficiary_id));
+    return filtered.length > 0 ? filtered : allBeneficiaries;
+  };
 
   const loadWillData = useCallback(async () => {
     if (!currentUser) return;
@@ -88,7 +113,6 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
       if (userExecutors.length > 0) {
         setExecutor(userExecutors[0]);
       }
-      setBeneficiaries(userBeneficiaries);
 
       // Fetch asset and policy beneficiary links with percentages
       const assetLinksMap: Record<string, Record<string, number>> = {};
@@ -104,12 +128,15 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
         policyLinksMap[policy.policy_id] = links;
       }
 
+      const beneficiariesForWill = getLinkedBeneficiaries(userBeneficiaries, assetLinksMap, policyLinksMap);
+      setBeneficiaries(beneficiariesForWill);
+
       // Generate will HTML
       if (profile) {
         const html = await generateWillHTML(
           profile,
           userExecutors.length > 0 ? userExecutors[0] : null,
-          userBeneficiaries,
+          beneficiariesForWill,
           userAssets,
           userPolicies,
           assetLinksMap,
@@ -234,11 +261,18 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
         regeneratedPolicyLinks[policy.policy_id] = links;
       }
 
+      const beneficiariesForWill = getLinkedBeneficiaries(
+        userBeneficiaries,
+        regeneratedAssetLinks,
+        regeneratedPolicyLinks
+      );
+      setBeneficiaries(beneficiariesForWill);
+
       // Generate new will HTML
       const html = await generateWillHTML(
         userProfile,
         userExecutors.length > 0 ? userExecutors[0] : null,
-        userBeneficiaries,
+        beneficiariesForWill,
         userAssets,
         userPolicies,
         regeneratedAssetLinks,
@@ -274,6 +308,7 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
       beneficiary_phone: beneficiary.beneficiary_phone || '',
       beneficiary_address: beneficiary.beneficiary_address || '',
       relationship_to_user: beneficiary.relationship_to_user || '',
+      beneficiary_id_number: beneficiary.beneficiary_id_number || '',
     });
   };
 
@@ -285,6 +320,15 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
       const formattedPhone = beneficiaryForm.beneficiary_phone
         ? formatSAPhoneNumber(beneficiaryForm.beneficiary_phone)
         : undefined;
+      const sanitizedIdNumber = sanitizeSouthAfricanIdNumber(
+        beneficiaryForm.beneficiary_id_number || ''
+      );
+
+      if (!sanitizedIdNumber || !isValidSouthAfricanIdNumber(sanitizedIdNumber)) {
+        Alert.alert('Validation', 'Please enter a valid 13-digit South African ID number.');
+        setSaving(false);
+        return;
+      }
 
       await BeneficiaryService.updateBeneficiary(editingBeneficiary.beneficiary_id, {
         beneficiary_first_name: beneficiaryForm.beneficiary_first_name,
@@ -294,6 +338,7 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
         beneficiary_phone: formattedPhone,
         beneficiary_address: beneficiaryForm.beneficiary_address || undefined,
         relationship_to_user: beneficiaryForm.relationship_to_user,
+        beneficiary_id_number: sanitizedIdNumber,
       });
 
       setEditingBeneficiary(null);
@@ -358,6 +403,15 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
       const formattedPhone = beneficiaryForm.beneficiary_phone
         ? formatSAPhoneNumber(beneficiaryForm.beneficiary_phone)
         : undefined;
+      const sanitizedIdNumber = sanitizeSouthAfricanIdNumber(
+        beneficiaryForm.beneficiary_id_number || ''
+      );
+
+      if (!sanitizedIdNumber || !isValidSouthAfricanIdNumber(sanitizedIdNumber)) {
+        Alert.alert('Validation', 'Please enter a valid 13-digit South African ID number.');
+        setSaving(false);
+        return;
+      }
 
       await BeneficiaryService.createBeneficiary({
         user_id: currentUser.uid,
@@ -368,6 +422,7 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
         beneficiary_phone: formattedPhone,
         beneficiary_address: beneficiaryForm.beneficiary_address || undefined,
         relationship_to_user: beneficiaryForm.relationship_to_user,
+        beneficiary_id_number: sanitizedIdNumber,
         is_primary: false,
         is_verified: false,
         verification_token: '',
@@ -381,6 +436,7 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
         beneficiary_phone: '',
         beneficiary_address: '',
         relationship_to_user: '',
+        beneficiary_id_number: '',
       });
       await loadWillData();
       await regenerateWill();
@@ -601,6 +657,38 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
                 />
               </View>
               <View style={styles.inputGroup}>
+                <Text style={styles.label}>ID Number *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={beneficiaryForm.beneficiary_id_number}
+                  onChangeText={(text) =>
+                    setBeneficiaryForm({
+                      ...beneficiaryForm,
+                      beneficiary_id_number: sanitizeSouthAfricanIdNumber(text),
+                    })
+                  }
+                  placeholder="13-digit ID number"
+                  keyboardType="number-pad"
+                  maxLength={13}
+                />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>ID Number *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={beneficiaryForm.beneficiary_id_number}
+                  onChangeText={(text) =>
+                    setBeneficiaryForm({
+                      ...beneficiaryForm,
+                      beneficiary_id_number: sanitizeSouthAfricanIdNumber(text),
+                    })
+                  }
+                  placeholder="13-digit ID number"
+                  keyboardType="number-pad"
+                  maxLength={13}
+                />
+              </View>
+              <View style={styles.inputGroup}>
                 <Text style={styles.label}>Address</Text>
                 <TextInput
                   style={styles.input}
@@ -630,7 +718,12 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonPrimary]}
                 onPress={handleSaveBeneficiary}
-                disabled={saving || !beneficiaryForm.beneficiary_first_name || !beneficiaryForm.beneficiary_surname}
+                disabled={
+                  saving ||
+                  !beneficiaryForm.beneficiary_first_name ||
+                  !beneficiaryForm.beneficiary_surname ||
+                  !isValidSouthAfricanIdNumber(beneficiaryForm.beneficiary_id_number || '')
+                }
               >
                 {saving ? (
                   <ActivityIndicator color={theme.colors.buttonText} />
@@ -835,7 +928,12 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonPrimary]}
                 onPress={handleAddBeneficiary}
-                disabled={saving || !beneficiaryForm.beneficiary_first_name || !beneficiaryForm.beneficiary_surname}
+                disabled={
+                  saving ||
+                  !beneficiaryForm.beneficiary_first_name ||
+                  !beneficiaryForm.beneficiary_surname ||
+                  !isValidSouthAfricanIdNumber(beneficiaryForm.beneficiary_id_number || '')
+                }
               >
                 {saving ? (
                   <ActivityIndicator color={theme.colors.buttonText} />

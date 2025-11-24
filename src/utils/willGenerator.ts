@@ -172,13 +172,14 @@ export async function generateWillHTML(
       `${beneficiary.beneficiary_first_name || ''} ${beneficiary.beneficiary_surname || ''}`.trim() ||
       'Unnamed Beneficiary';
     const prefix = index === 0 ? '' : 'and ';
+    const beneficiaryIdNumber = beneficiary.beneficiary_id_number || 'Not specified';
     
     beneficiariesList += `<p class="clause-text">`;
     beneficiariesList += `${prefix}<span class="blank-line">${beneficiaryName}</span>`;
     beneficiariesList += `</p>`;
     beneficiariesList += `<div class="user-info-row">`;
     beneficiariesList += `<div class="user-info-left"></div>`;
-    beneficiariesList += `<div class="user-info-right">ID Number: <span class="blank-line">Not specified</span></div>`;
+    beneficiariesList += `<div class="user-info-right">ID Number: <span class="blank-line">${beneficiaryIdNumber}</span></div>`;
     beneficiariesList += `</div>`;
   });
 
@@ -483,7 +484,7 @@ export async function generateWillHTML(
       </p>
       <div class="user-info-row">
         <div class="user-info-left"></div>
-        <div class="user-info-right">ID Number: <span class="blank-line">Not specified</span></div>
+        <div class="user-info-right">ID Number: <span class="blank-line">${beneficiaries[0].beneficiary_id_number || 'Not specified'}</span></div>
       </div>
       <p class="clause-text">
         subject to the conditions of clause 5 hereafter.

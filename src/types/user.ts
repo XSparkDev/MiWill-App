@@ -1,5 +1,7 @@
 export type NotificationFrequency = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom_days';
 
+export const SOUTH_AFRICAN_ID_LENGTH = 13;
+
 export interface UserProfile {
   user_id: string;
   email: string;

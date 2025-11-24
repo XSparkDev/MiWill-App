@@ -68,6 +68,17 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
   const [showLinkExplainerModal, setShowLinkExplainerModal] = useState(false);
   const [dontShowLinkExplainerAgain, setDontShowLinkExplainerAgain] = useState(false);
   const [linkExplainerShown, setLinkExplainerShown] = useState(false);
+  const prefillPolicyForm = () => {
+    setFormData({
+      policyNumber: 'POL-987654',
+      policyType: 'life_insurance',
+      otherPolicyType: '',
+      insuranceCompany: 'Discovery Life',
+      policyValue: '2 000 000',
+      policyDescription: 'Comprehensive life cover for spouse and children',
+    });
+    setCurrentStep(0);
+  };
 
   const [formData, setFormData] = useState({
     policyNumber: '',
@@ -259,19 +270,10 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
           returnTo: fromGuidedWill ? 'Dashboard' : undefined,
         });
       } else if (nextAction === 'addMore') {
-        // Reset form and go back to step 0
-        setFormData({
-          policyNumber: '',
-          policyType: '',
-          otherPolicyType: '',
-          insuranceCompany: '',
-          policyValue: '',
-          policyDescription: '',
-        });
-        setCurrentStep(0);
-        slideAnim.setValue(0);
-        fadeAnim.setValue(1);
         setSaving(false);
+        navigation.navigate('AddAsset', {
+          fromGuidedWill,
+        });
       } else {
         setTimeout(() => {
           navigation.navigate('Dashboard');
@@ -314,6 +316,14 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
           }),
         ]).start();
       });
+    } else {
+      navigation.goBack();
+    }
+  };
+
+  const handleHeaderBack = () => {
+    if (currentStep > 0) {
+      previousStep();
     } else {
       navigation.goBack();
     }
@@ -470,13 +480,14 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.mainWrapper}>
+      <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} disabled={saving}>
+          <TouchableOpacity onPress={handleHeaderBack} disabled={saving}>
             <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Add Policy</Text>
@@ -660,11 +671,23 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+      </SafeAreaView>
+      <TouchableOpacity
+        style={styles.prefillButton}
+        onPress={prefillPolicyForm}
+        accessibilityLabel="Prefill policy form"
+        hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+      >
+        <Ionicons name="document-text-outline" size={20} color={theme.colors.text} />
+      </TouchableOpacity>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  mainWrapper: {
+    flex: 1,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: theme.colors.background,
@@ -857,12 +880,12 @@ const styles = StyleSheet.create({
   addMoreButton: {
     width: '100%',
     minHeight: 56,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: '#E0E0E0',
     borderRadius: theme.borderRadius.xl,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: theme.colors.primary,
+    borderColor: '#B0B0B0',
   },
   addMoreButtonDisabled: {
     opacity: 0.5,
@@ -870,7 +893,7 @@ const styles = StyleSheet.create({
   addMoreButtonText: {
     fontSize: theme.typography.sizes.lg,
     fontWeight: theme.typography.weights.semibold as any,
-    color: theme.colors.primary,
+    color: '#7A7A7A',
   },
   infoModalOverlay: {
     flex: 1,
@@ -955,6 +978,24 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.medium as any,
+  },
+  prefillButton: {
+    position: 'absolute',
+    right: theme.spacing.lg,
+    bottom: theme.spacing.lg,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    shadowColor: '#00000033',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
   },
   infoModalButton: {
     alignSelf: 'flex-end',
