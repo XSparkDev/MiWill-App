@@ -18,9 +18,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
 import { useAuth } from '../contexts/AuthContext';
 import PolicyService from '../services/policyService';
+import BeneficiaryService from '../services/beneficiaryService';
 import Toast from '../components/Toast';
 import { formatCurrencyInput, parseCurrency } from '../utils/currencyFormatter';
 import { shouldShowModal, setDontShowAgain } from '../utils/modalPreferences';
+import { formatSAPhoneNumber, isValidSAPhoneNumber } from '../utils/phoneFormatter';
+import { sanitizeSouthAfricanIdNumber, isValidSouthAfricanIdNumber } from '../services/userService';
 
 const { width } = Dimensions.get('window');
 
@@ -68,6 +71,27 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
   const [showLinkExplainerModal, setShowLinkExplainerModal] = useState(false);
   const [dontShowLinkExplainerAgain, setDontShowLinkExplainerAgain] = useState(false);
   const [linkExplainerShown, setLinkExplainerShown] = useState(false);
+  const [showEstateBeneficiaryModal, setShowEstateBeneficiaryModal] = useState(false);
+  const [estateBeneficiarySaving, setEstateBeneficiarySaving] = useState(false);
+  const [estateBeneficiaryForms, setEstateBeneficiaryForms] = useState<Array<{
+    firstName: string;
+    surname: string;
+    email: string;
+    phone: string;
+    relationship: string;
+    idNumber: string;
+    address: string;
+  }>>([{
+    firstName: '',
+    surname: '',
+    email: '',
+    phone: '',
+    relationship: '',
+    idNumber: '',
+    address: '',
+  }]);
+  const [noPoliciesYetChecked, setNoPoliciesYetChecked] = useState(false);
+  const [policyCaptureSkipped, setPolicyCaptureSkipped] = useState(false);
   const prefillPolicyForm = () => {
     setFormData({
       policyNumber: 'POL-987654',
@@ -148,7 +172,162 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
     setInfoModalContent(null);
   };
 
+  const resetPolicyEstateForm = () => {
+    setEstateBeneficiaryForms([{
+      firstName: '',
+      surname: '',
+      email: '',
+      phone: '',
+      relationship: '',
+      idNumber: '',
+      address: '',
+    }]);
+  };
+
+  const prefillPolicyEstateForm = (index: number) => {
+    setEstateBeneficiaryForms(prev => {
+      const updated = [...prev];
+      updated[index] = {
+        firstName: index === 0 ? 'Lerato' : 'Thando',
+        surname: index === 0 ? 'Nkosi' : 'Mokoena',
+        email: index === 0 ? 'lerato.nkosi@example.com' : 'thando.mokoena@example.com',
+        phone: formatSAPhoneNumber(index === 0 ? '0835551212' : '0823456789'),
+        relationship: index === 0 ? 'Sibling' : 'Spouse',
+        idNumber: sanitizeSouthAfricanIdNumber(index === 0 ? '9005054809083' : '8901025809086'),
+        address: index === 0 ? '12 Rose Street, Durban' : '25 Protea Street, Johannesburg',
+      };
+      return updated;
+    });
+  };
+
+  const addPolicyEstateBeneficiaryForm = () => {
+    setEstateBeneficiaryForms(prev => [...prev, {
+      firstName: '',
+      surname: '',
+      email: '',
+      phone: '',
+      relationship: '',
+      idNumber: '',
+      address: '',
+    }]);
+  };
+
+  const removePolicyEstateBeneficiaryForm = (index: number) => {
+    if (estateBeneficiaryForms.length > 1) {
+      setEstateBeneficiaryForms(prev => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const updatePolicyEstateField = (index: number, field: string, value: string) => {
+    setEstateBeneficiaryForms(prev => {
+      const updated = [...prev];
+      updated[index] = {
+        ...updated[index],
+        [field]:
+          field === 'phone'
+            ? formatSAPhoneNumber(value)
+            : field === 'idNumber'
+            ? sanitizeSouthAfricanIdNumber(value)
+            : value,
+      };
+      return updated;
+    });
+  };
+
+  const handlePolicyEstateBeneficiarySave = async () => {
+    if (!currentUser) {
+      setToastMessage('Please log in to add a beneficiary.');
+      setToastType('error');
+      setShowToast(true);
+      return;
+    }
+
+    // Validate all forms
+    for (let i = 0; i < estateBeneficiaryForms.length; i++) {
+      const form = estateBeneficiaryForms[i];
+      if (!form.firstName.trim() || !form.surname.trim()) {
+        setToastMessage(`Please provide the full name for beneficiary ${i + 1}.`);
+        setToastType('error');
+        setShowToast(true);
+        return;
+      }
+
+      if (!form.relationship.trim()) {
+        setToastMessage(`Please provide the relationship for beneficiary ${i + 1}.`);
+        setToastType('error');
+        setShowToast(true);
+        return;
+      }
+
+      const sanitizedId = sanitizeSouthAfricanIdNumber(form.idNumber.trim());
+      if (!sanitizedId || !isValidSouthAfricanIdNumber(sanitizedId)) {
+        setToastMessage(`Please enter a valid 13-digit ID number for beneficiary ${i + 1}.`);
+        setToastType('error');
+        setShowToast(true);
+        return;
+      }
+
+      if (form.phone.trim() && !isValidSAPhoneNumber(form.phone.trim())) {
+        setToastMessage(`Please enter a valid phone number for beneficiary ${i + 1}.`);
+        setToastType('error');
+        setShowToast(true);
+        return;
+      }
+    }
+
+    setEstateBeneficiarySaving(true);
+    try {
+      // Create all beneficiaries
+      const createPromises = estateBeneficiaryForms.map((form, index) => {
+        const formattedPhone = form.phone.trim() ? formatSAPhoneNumber(form.phone.trim()) : undefined;
+        const sanitizedId = sanitizeSouthAfricanIdNumber(form.idNumber.trim());
+        
+        return BeneficiaryService.createBeneficiary({
+          user_id: currentUser.uid,
+          beneficiary_first_name: form.firstName.trim(),
+          beneficiary_surname: form.surname.trim(),
+          beneficiary_name: `${form.firstName.trim()} ${form.surname.trim()}`.trim(),
+          beneficiary_email: form.email.trim() || undefined,
+          beneficiary_phone: formattedPhone,
+          beneficiary_address: form.address.trim() || undefined,
+          relationship_to_user: form.relationship.trim(),
+          beneficiary_id_number: sanitizedId,
+          inherit_entire_estate: true,
+          is_primary: index === 0,
+          is_verified: false,
+          verification_token: '',
+        } as any);
+      });
+
+      await Promise.all(createPromises);
+
+      setToastMessage(`${estateBeneficiaryForms.length} ${estateBeneficiaryForms.length === 1 ? 'beneficiary has' : 'beneficiaries have'} been added as estate heirs.`);
+      setToastType('success');
+      setShowToast(true);
+      setShowEstateBeneficiaryModal(false);
+      resetPolicyEstateForm();
+      navigation.navigate('ViewWill');
+    } catch (error: any) {
+      setToastMessage(error.message || 'Failed to add beneficiaries.');
+      setToastType('error');
+      setShowToast(true);
+    } finally {
+      setEstateBeneficiarySaving(false);
+    }
+  };
+
   const handleLinkBeneficiaryRequest = async () => {
+    if (policyCaptureSkipped) {
+        if (!currentUser) {
+          setToastMessage('Please log in to add a beneficiary.');
+          setToastType('error');
+          setShowToast(true);
+          return;
+        }
+        setShowEstateBeneficiaryModal(true);
+        return;
+    }
+
     if (fromGuidedWill && !linkExplainerShown) {
       const shouldShow = await shouldShowModal('ADD_POLICY_LINK_BENEFICIARY');
       if (shouldShow) {
@@ -164,8 +343,17 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
 
   const nextStep = async () => {
     if (currentStep < totalSteps - 1) {
+      if (currentStep === 0 && noPoliciesYetChecked) {
+        setPolicyCaptureSkipped(true);
+        setCurrentStep(totalSteps - 1);
+        slideAnim.setValue(0);
+        fadeAnim.setValue(1);
+        return;
+      }
+
       // Validate required fields before proceeding
       if (currentStep === 0) {
+        setPolicyCaptureSkipped(false);
         if (!formData.policyType) {
           setToastMessage('Please select a policy type');
           setToastType('error');
@@ -237,6 +425,26 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
   };
 
   const handleSavePolicy = async (nextAction: 'back' | 'link' | 'addMore' = 'back') => {
+    if (policyCaptureSkipped) {
+      setToastMessage('No policy captured. You can add one later.');
+      setToastType('info');
+      setShowToast(true);
+      if (nextAction === 'link') {
+        navigation.navigate('AddBeneficiary', {
+          fromGuidedFlow: fromGuidedWill,
+          returnTo: fromGuidedWill ? 'Dashboard' : undefined,
+        });
+      } else if (nextAction === 'addMore') {
+        navigation.navigate('AddAsset', {
+          fromGuidedWill,
+        });
+      } else {
+        navigation.navigate('Dashboard');
+      }
+      setSaving(false);
+      return;
+    }
+
     if (!currentUser) {
       setToastMessage('You must be logged in to add a policy');
       setToastType('error');
@@ -275,9 +483,9 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
           fromGuidedWill,
         });
       } else {
-        setTimeout(() => {
+      setTimeout(() => {
           navigation.navigate('Dashboard');
-        }, 1500);
+      }, 1500);
       }
     } catch (error: any) {
       setToastMessage(error.message || 'Failed to save policy');
@@ -383,10 +591,10 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
             </ScrollView>
 
             {formData.policyType === 'other' && (
-              <TextInput
-                style={styles.input}
+            <TextInput
+              style={styles.input}
                 placeholder="Specify policy type"
-                placeholderTextColor={theme.colors.placeholder}
+              placeholderTextColor={theme.colors.placeholder}
                 value={formData.otherPolicyType}
                 onChangeText={(value) => updateFormData('otherPolicyType', value)}
               />
@@ -439,19 +647,28 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
             </View>
             <Text style={styles.stepSubtitle}>Review your policy information</Text>
 
+            {policyCaptureSkipped ? (
+              <View style={styles.emptyReviewNotice}>
+                <Ionicons name="alert-circle-outline" size={32} color={theme.colors.primary} />
+                <Text style={styles.emptyReviewTitle}>No Policies listed</Text>
+                <Text style={styles.emptyReviewBody}>
+                  You indicated that you don&apos;t have any policies yet. No worries, you can add them later, however, if you would like the to bequeath your estate in full to one or more beneficiaries, you can click Add Beneficiary.
+                </Text>
+              </View>
+            ) : (
             <View style={styles.reviewContainer}>
               <View style={styles.reviewRow}>
                 <Text style={styles.reviewLabel}>Policy Number:</Text>
-                <Text style={styles.reviewValue}>
-                  {formData.policyNumber.trim() || 'Add later'}
-                </Text>
+                  <Text style={styles.reviewValue}>
+                    {formData.policyNumber.trim() || 'Add later'}
+                  </Text>
               </View>
               <View style={styles.reviewRow}>
                 <Text style={styles.reviewLabel}>Type:</Text>
                 <Text style={styles.reviewValue}>
-                  {formData.policyType === 'other'
-                    ? formData.otherPolicyType
-                    : formData.policyType.charAt(0).toUpperCase() + formData.policyType.slice(1).replace('_', ' ')}
+                    {formData.policyType === 'other'
+                      ? formData.otherPolicyType
+                      : formData.policyType.charAt(0).toUpperCase() + formData.policyType.slice(1).replace('_', ' ')}
                 </Text>
               </View>
               <View style={styles.reviewRow}>
@@ -471,6 +688,7 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
                 </View>
               )}
             </View>
+            )}
           </Animated.View>
         );
 
@@ -481,7 +699,7 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
 
   return (
     <View style={styles.mainWrapper}>
-      <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -506,13 +724,33 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
         >
           {renderStep()}
 
+          {currentStep === 0 && (
+            <TouchableOpacity
+              style={styles.skipPoliciesRow}
+              onPress={() => setNoPoliciesYetChecked(prev => !prev)}
+              activeOpacity={0.8}
+            >
+              <View
+                style={[
+                  styles.skipPoliciesCheckbox,
+                  noPoliciesYetChecked && styles.skipPoliciesCheckboxChecked,
+                ]}
+              >
+                {noPoliciesYetChecked && (
+                  <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                )}
+              </View>
+              <Text style={styles.skipPoliciesLabel}>I don't have any policies yet</Text>
+              </TouchableOpacity>
+            )}
+
           <View style={styles.buttonContainer}>
             {currentStep === totalSteps - 1 ? (
               <>
-                <TouchableOpacity
+            <TouchableOpacity
                   style={[styles.secondaryButton, saving && styles.secondaryButtonDisabled]}
                   onPress={handleLinkBeneficiaryRequest}
-                  disabled={saving}
+              disabled={saving}
                 >
                   <Text
                     style={[
@@ -520,28 +758,34 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
                       saving && styles.secondaryButtonTextDisabled,
                     ]}
                   >
-                    Link Beneficiary
+                    {policyCaptureSkipped ? 'Add Beneficiary' : 'Link Beneficiary'}
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.nextButton}
+                  style={[
+                    styles.nextButton,
+                    (saving || policyCaptureSkipped) && styles.nextButtonDisabled,
+                  ]}
                   onPress={() => handleSavePolicy()}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color={theme.colors.buttonText} />
-                  ) : (
+                  disabled={saving || policyCaptureSkipped}
+            >
+              {saving ? (
+                <ActivityIndicator color={theme.colors.buttonText} />
+              ) : (
                     <Text style={styles.nextButtonText}>Save Policy</Text>
-                  )}
-                </TouchableOpacity>
+              )}
+            </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.addMoreButton, saving && styles.addMoreButtonDisabled]}
+                  style={[
+                    styles.addMoreButton,
+                    (saving || policyCaptureSkipped) && styles.addMoreButtonDisabled,
+                  ]}
                   onPress={async () => {
                     await handleSavePolicy('addMore');
                   }}
-                  disabled={saving}
+                  disabled={saving || policyCaptureSkipped}
                 >
                   <Text style={styles.addMoreButtonText}>Add more policies</Text>
                 </TouchableOpacity>
@@ -671,7 +915,164 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
           </View>
         </View>
       </Modal>
-      </SafeAreaView>
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={showEstateBeneficiaryModal}
+        onRequestClose={() => {
+          if (!estateBeneficiarySaving) {
+            setShowEstateBeneficiaryModal(false);
+            resetPolicyEstateForm();
+          }
+        }}
+      >
+        <View style={styles.infoModalOverlay}>
+          <View style={styles.estateModalContainer}>
+            <View style={styles.estateModalHeader}>
+              <Text style={styles.estateModalTitle}>Add Estate Beneficiary</Text>
+              <View style={styles.estateModalHeaderActions}>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (!estateBeneficiarySaving) {
+                      setShowEstateBeneficiaryModal(false);
+                      resetPolicyEstateForm();
+                    }
+                  }}
+                >
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <Text style={styles.estateModalSubtitle}>
+              These beneficiaries will inherit your entire estate until specific Policies or Assets are added.
+            </Text>
+            <ScrollView style={styles.estateModalScroll}>
+              {estateBeneficiaryForms.map((form, index) => (
+                <View key={index} style={styles.estateBeneficiaryFormContainer}>
+                  <View style={styles.estateBeneficiaryFormHeader}>
+                    <Text style={styles.estateBeneficiaryFormTitle}>
+                      Beneficiary {index + 1}
+                    </Text>
+                    <View style={styles.estateBeneficiaryFormHeaderActions}>
+                      <TouchableOpacity
+                        style={styles.estatePrefillButton}
+                        onPress={() => prefillPolicyEstateForm(index)}
+                        disabled={estateBeneficiarySaving}
+                      >
+                        <Ionicons name="document-text-outline" size={18} color={theme.colors.text} />
+                      </TouchableOpacity>
+                      {estateBeneficiaryForms.length > 1 && (
+                        <TouchableOpacity
+                          style={styles.removeBeneficiaryButton}
+                          onPress={() => removePolicyEstateBeneficiaryForm(index)}
+                          disabled={estateBeneficiarySaving}
+                        >
+                          <Ionicons name="close-circle" size={20} color={theme.colors.error || '#FF3B30'} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="First Name"
+                    placeholderTextColor={theme.colors.placeholder}
+                    value={form.firstName}
+                    onChangeText={(value) => updatePolicyEstateField(index, 'firstName', value)}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Surname"
+                    placeholderTextColor={theme.colors.placeholder}
+                    value={form.surname}
+                    onChangeText={(value) => updatePolicyEstateField(index, 'surname', value)}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Relationship to you"
+                    placeholderTextColor={theme.colors.placeholder}
+                    value={form.relationship}
+                    onChangeText={(value) => updatePolicyEstateField(index, 'relationship', value)}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="ID Number (13 digits)"
+                    placeholderTextColor={theme.colors.placeholder}
+                    value={form.idNumber}
+                    onChangeText={(value) => updatePolicyEstateField(index, 'idNumber', value)}
+                    keyboardType="number-pad"
+                    maxLength={13}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Phone Number (Optional)"
+                    placeholderTextColor={theme.colors.placeholder}
+                    value={form.phone}
+                    onChangeText={(value) => updatePolicyEstateField(index, 'phone', value)}
+                    keyboardType="phone-pad"
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Email (Optional)"
+                    placeholderTextColor={theme.colors.placeholder}
+                    value={form.email}
+                    onChangeText={(value) => updatePolicyEstateField(index, 'email', value)}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Address (Optional)"
+                    placeholderTextColor={theme.colors.placeholder}
+                    value={form.address}
+                    onChangeText={(value) => updatePolicyEstateField(index, 'address', value)}
+                    multiline
+                  />
+                  {index < estateBeneficiaryForms.length - 1 && (
+                    <View style={styles.estateBeneficiaryDivider} />
+                  )}
+                </View>
+              ))}
+              <TouchableOpacity
+                style={styles.addAnotherBeneficiaryButton}
+                onPress={addPolicyEstateBeneficiaryForm}
+                disabled={estateBeneficiarySaving}
+              >
+                <Ionicons name="add-circle-outline" size={20} color={theme.colors.primary} />
+                <Text style={styles.addAnotherBeneficiaryText}>Add Another Beneficiary</Text>
+              </TouchableOpacity>
+            </ScrollView>
+            <View style={styles.estateModalButtons}>
+              <TouchableOpacity
+                style={[styles.estateModalButton, styles.estateModalButtonSecondary]}
+                onPress={() => {
+                  if (!estateBeneficiarySaving) {
+                    setShowEstateBeneficiaryModal(false);
+                    resetPolicyEstateForm();
+                  }
+                }}
+                disabled={estateBeneficiarySaving}
+              >
+                <Text style={styles.estateModalButtonSecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.estateModalButton, styles.estateModalButtonPrimary]}
+                onPress={handlePolicyEstateBeneficiarySave}
+                disabled={estateBeneficiarySaving}
+              >
+                {estateBeneficiarySaving ? (
+                  <ActivityIndicator color={theme.colors.buttonText} />
+                ) : (
+                  <Text style={styles.estateModalButtonPrimaryText}>
+                    Save {estateBeneficiaryForms.length === 1 ? 'Beneficiary' : 'Beneficiaries'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
       <TouchableOpacity
         style={styles.prefillButton}
         onPress={prefillPolicyForm}
@@ -849,6 +1250,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  nextButtonDisabled: {
+    backgroundColor: theme.colors.border,
+    opacity: 0.5,
+  },
   nextButtonFull: {
     width: '100%',
   },
@@ -894,6 +1299,52 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.lg,
     fontWeight: theme.typography.weights.semibold as any,
     color: '#7A7A7A',
+  },
+  skipPoliciesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+  },
+  skipPoliciesCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    marginRight: theme.spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+  },
+  skipPoliciesCheckboxChecked: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  skipPoliciesLabel: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.text,
+    flex: 1,
+  },
+  emptyReviewNotice: {
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.xl,
+    padding: theme.spacing.lg,
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    gap: theme.spacing.sm,
+  },
+  emptyReviewTitle: {
+    fontSize: theme.typography.sizes.lg,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.text,
+  },
+  emptyReviewBody: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: theme.typography.lineHeights.relaxed * theme.typography.sizes.sm,
   },
   infoModalOverlay: {
     flex: 1,
@@ -978,6 +1429,119 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.medium as any,
+  },
+  estateModalContainer: {
+    width: '100%',
+    maxHeight: '90%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xxl,
+    padding: theme.spacing.xl,
+  },
+  estateModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.sm,
+  },
+  estateModalHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  estatePrefillButton: {
+    padding: theme.spacing.xs,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  estateModalTitle: {
+    fontSize: theme.typography.sizes.xl,
+    fontWeight: theme.typography.weights.bold as any,
+    color: theme.colors.text,
+  },
+  estateModalSubtitle: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+    marginBottom: theme.spacing.md,
+  },
+  estateModalScroll: {
+    maxHeight: 360,
+  },
+  estateModalButtons: {
+    flexDirection: 'row',
+    gap: theme.spacing.md,
+    marginTop: theme.spacing.lg,
+  },
+  estateModalButton: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: theme.borderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  estateModalButtonPrimary: {
+    backgroundColor: theme.colors.buttonPrimary,
+  },
+  estateModalButtonSecondary: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+  },
+  estateModalButtonPrimaryText: {
+    color: theme.colors.buttonText,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  estateModalButtonSecondaryText: {
+    color: theme.colors.text,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  estateBeneficiaryFormContainer: {
+    marginBottom: theme.spacing.lg,
+  },
+  estateBeneficiaryFormHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.md,
+  },
+  estateBeneficiaryFormTitle: {
+    fontSize: theme.typography.sizes.lg,
+    fontWeight: theme.typography.weights.bold as any,
+    color: theme.colors.text,
+  },
+  estateBeneficiaryFormHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  removeBeneficiaryButton: {
+    padding: theme.spacing.xs,
+  },
+  estateBeneficiaryDivider: {
+    height: 1,
+    backgroundColor: theme.colors.border,
+    marginVertical: theme.spacing.lg,
+  },
+  addAnotherBeneficiaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
+    borderWidth: 2,
+    borderColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface,
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.md,
+  },
+  addAnotherBeneficiaryText: {
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+    color: theme.colors.primary,
   },
   prefillButton: {
     position: 'absolute',

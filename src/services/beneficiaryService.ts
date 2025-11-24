@@ -75,6 +75,7 @@ export class BeneficiaryService {
       const beneficiaryDoc = {
         beneficiary_id: beneficiaryRef.id,
         ...cleanedData,
+        inherit_entire_estate: beneficiaryData.inherit_entire_estate || false,
         is_primary: beneficiaryData.is_primary || false,
         is_verified: false,
         created_at: Timestamp.now(),

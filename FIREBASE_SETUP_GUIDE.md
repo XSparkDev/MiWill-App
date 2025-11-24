@@ -458,6 +458,7 @@ We'll create each collection one by one. In Firestore, you can create collection
    - `is_primary`: boolean (default: false)
    - `is_verified`: boolean (default: false)
    - `verification_token`: string (auto-generated)
+           - `inherit_entire_estate`: boolean (default: false) — set to true for beneficiaries who should inherit the entire estate when no specific assets or policies are captured.
    - `created_at`: timestamp
    - `updated_at`: timestamp
 

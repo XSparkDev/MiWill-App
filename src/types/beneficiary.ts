@@ -13,6 +13,7 @@ export interface BeneficiaryInformation {
   is_primary: boolean;
   is_verified: boolean;
   verification_token?: string;
+  inherit_entire_estate?: boolean;
   created_at: Date | string;
   updated_at: Date | string;
 }

@@ -84,10 +84,34 @@ export async function generateWillHTML(
   const estateValue = assets.reduce((sum, asset) => sum + (asset.asset_value || 0), 0) +
     policies.reduce((sum, policy) => sum + (policy.policy_value || 0), 0);
 
+  const estateWideBeneficiaries = beneficiaries.filter(
+    (beneficiary) => beneficiary.inherit_entire_estate
+  );
+  const clauseBeneficiaries = estateWideBeneficiaries.length > 0 ? estateWideBeneficiaries : beneficiaries;
+  const hasEstateWideBeneficiaries = estateWideBeneficiaries.length > 0;
+
   // Build assets section with beneficiaries
   let assetsSection = '';
-  if (assets.length > 0) {
-    assetsSection = '<div class="clause-section"><h3 class="clause-number">5. SPECIFIC BEQUESTS - ASSETS</h3>';
+  if (hasEstateWideBeneficiaries && assets.length === 0) {
+    // If there are estate-wide beneficiaries but no assets, show clause explaining all assets go to them
+    assetsSection = '<div class="clause-section"><h3 class="clause-number">4. SPECIFIC BEQUESTS - ASSETS</h3>';
+    assetsSection += '<p class="clause-text">I hereby bequeath the remainder of my Assets, including all Assets that I may own at the time of my death, to my estate-wide beneficiaries as specified in clause 3.1 above, in equal shares.</p>';
+    
+    if (estateWideBeneficiaries.length > 0) {
+      assetsSection += '<p class="clause-text"><strong>Estate-wide Beneficiaries:</strong></p>';
+      assetsSection += '<ul class="allocation-list">';
+      estateWideBeneficiaries.forEach(ben => {
+        const beneficiaryName = ben.beneficiary_name || 
+          `${ben.beneficiary_first_name || ''} ${ben.beneficiary_surname || ''}`.trim() ||
+          'Unnamed Beneficiary';
+        assetsSection += `<li><strong>${beneficiaryName}</strong></li>`;
+      });
+      assetsSection += `</ul>`;
+    }
+    
+    assetsSection += '</div>';
+  } else if (assets.length > 0 && !hasEstateWideBeneficiaries) {
+    assetsSection = '<div class="clause-section"><h3 class="clause-number">4. SPECIFIC BEQUESTS - ASSETS</h3>';
     assetsSection += '<p class="clause-text">I hereby bequeath the following Assets to the beneficiaries as specified:</p>';
     
     assets.forEach(asset => {
@@ -126,8 +150,26 @@ export async function generateWillHTML(
 
   // Build policies section with beneficiaries
   let policiesSection = '';
-  if (policies.length > 0) {
-    policiesSection = '<div class="clause-section"><h3 class="clause-number">6. SPECIFIC BEQUESTS - POLICIES</h3>';
+  if (hasEstateWideBeneficiaries && policies.length === 0) {
+    // If there are estate-wide beneficiaries but no policies, show clause explaining all policies go to them
+    policiesSection = '<div class="clause-section"><h3 class="clause-number">5. SPECIFIC BEQUESTS - POLICIES</h3>';
+    policiesSection += '<p class="clause-text">I hereby bequeath the remainder of my Policies, including all Policies that I may own at the time of my death, to my estate-wide beneficiaries as specified in clause 3.1 above, in equal shares.</p>';
+    
+    if (estateWideBeneficiaries.length > 0) {
+      policiesSection += '<p class="clause-text"><strong>Estate-wide Beneficiaries:</strong></p>';
+      policiesSection += '<ul class="allocation-list">';
+      estateWideBeneficiaries.forEach(ben => {
+        const beneficiaryName = ben.beneficiary_name || 
+          `${ben.beneficiary_first_name || ''} ${ben.beneficiary_surname || ''}`.trim() ||
+          'Unnamed Beneficiary';
+        policiesSection += `<li><strong>${beneficiaryName}</strong></li>`;
+      });
+      policiesSection += `</ul>`;
+    }
+    
+    policiesSection += '</div>';
+  } else if (policies.length > 0 && !hasEstateWideBeneficiaries) {
+    policiesSection = '<div class="clause-section"><h3 class="clause-number">4. SPECIFIC BEQUESTS - POLICIES</h3>';
     policiesSection += '<p class="clause-text">I hereby bequeath the following Policies to the beneficiaries as specified:</p>';
     
     policies.forEach(policy => {
@@ -167,7 +209,7 @@ export async function generateWillHTML(
 
   // Build beneficiaries list for clause 4.2 - matching traditional format
   let beneficiariesList = '';
-  beneficiaries.forEach((beneficiary, index) => {
+  clauseBeneficiaries.forEach((beneficiary, index) => {
     const beneficiaryName = beneficiary.beneficiary_name || 
       `${beneficiary.beneficiary_first_name || ''} ${beneficiary.beneficiary_surname || ''}`.trim() ||
       'Unnamed Beneficiary';
@@ -183,8 +225,9 @@ export async function generateWillHTML(
     beneficiariesList += `</div>`;
   });
 
-  const shouldUseSoleHeir = beneficiaries.length === 1 && 
-    beneficiaries[0].relationship_to_user?.toLowerCase().includes('spouse');
+  const clauseSoleHeir = clauseBeneficiaries.length === 1 ? clauseBeneficiaries[0] : null;
+  const soleHeirIsSpouse = clauseSoleHeir?.relationship_to_user?.toLowerCase().includes('spouse');
+  const shouldUseSoleHeir = !!clauseSoleHeir;
 
   const html = `
 <!DOCTYPE html>
@@ -470,35 +513,35 @@ export async function generateWillHTML(
   ` : ''}
 
   <div class="clause-section">
-    <h3 class="clause-number">4.</h3>
-    <p class="clause-note">(Delete either clause 4.1. or 4.2, whichever is not applicable).</p>
-    ${shouldUseSoleHeir && beneficiaries.length > 0 ? `
+    <h3 class="clause-number">3.</h3>
+    <p class="clause-note">(Delete either clause 3.1. or 3.2, whichever is not applicable).</p>
+    ${shouldUseSoleHeir && clauseSoleHeir ? `
     <div class="sub-clause-section">
-      <h4 class="sub-clause-number">4.1</h4>
+      <h4 class="sub-clause-number">3.1</h4>
       <p class="clause-text">
-        As the sole heir / heiress to my estate, I nominate and appoint my spouse
+        As the sole heir / heiress to my estate, I nominate and appoint ${soleHeirIsSpouse ? 'my spouse' : ''}
       </p>
       <p class="clause-text">
-        <span class="blank-line">${beneficiaries[0].beneficiary_name || 
-          `${beneficiaries[0].beneficiary_first_name || ''} ${beneficiaries[0].beneficiary_surname || ''}`.trim()}</span>
+        <span class="blank-line">${clauseSoleHeir.beneficiary_name || 
+          `${clauseSoleHeir.beneficiary_first_name || ''} ${clauseSoleHeir.beneficiary_surname || ''}`.trim()}</span>
       </p>
       <div class="user-info-row">
         <div class="user-info-left"></div>
-        <div class="user-info-right">ID Number: <span class="blank-line">${beneficiaries[0].beneficiary_id_number || 'Not specified'}</span></div>
+        <div class="user-info-right">ID Number: <span class="blank-line">${clauseSoleHeir.beneficiary_id_number || 'Not specified'}</span></div>
       </div>
       <p class="clause-text">
         subject to the conditions of clause 5 hereafter.
       </p>
     </div>
-    ` : beneficiaries.length > 0 ? `
+    ` : clauseBeneficiaries.length > 0 ? `
     <div class="sub-clause-section">
-      <h4 class="sub-clause-number">4.2</h4>
+      <h4 class="sub-clause-number">3.1</h4>
       <p class="clause-text">
-        I appoint my hereinafter mentioned children as the joint heirs and heiresses to my Estate in equal shares
+        I appoint the following beneficiaries as the joint heirs and heiresses to my Estate in equal shares
       </p>
       ${beneficiariesList}
       <p class="clause-text">
-        subject to the conditions of clause 5 hereafter. Should any of my aforesaid children pre-decease me without leaving children, I direct that his or her share shall devolve upon the others.
+        ${hasEstateWideBeneficiaries ? 'They shall inherit my entire estate in equal shares.' : 'subject to the conditions of clause 4 hereafter.'} Should any of my aforesaid beneficiaries pre-decease me without leaving descendants, I direct that his or her share shall devolve upon the others.
       </p>
     </div>
     ` : `
@@ -507,17 +550,17 @@ export async function generateWillHTML(
   </div>
 
   <div class="clause-section">
-    <h3 class="clause-number">5.</h3>
+    <h3 class="clause-number">3.2</h3>
     <p class="clause-text">
       Should any of my beneficiaries predecease me, or fail to accept their inheritance, then such inheritance shall devolve upon their lawful descendants per stirpes.
     </p>
   </div>
 
-  ${assetsSection ? assetsSection.replace('5. SPECIFIC BEQUESTS - ASSETS', '6. SPECIFIC BEQUESTS - ASSETS') : ''}
+  ${assetsSection ? assetsSection.replace('4. SPECIFIC BEQUESTS - ASSETS', '4. SPECIFIC BEQUESTS - ASSETS') : ''}
 
-  ${policiesSection ? policiesSection.replace('6. SPECIFIC BEQUESTS - POLICIES', '7. SPECIFIC BEQUESTS - POLICIES') : ''}
+  ${policiesSection ? policiesSection.replace('4. SPECIFIC BEQUESTS - POLICIES', '5. SPECIFIC BEQUESTS - POLICIES') : ''}
 
-  ${assets.length > 0 || policies.length > 0 ? `
+  ${!hasEstateWideBeneficiaries && (assets.length > 0 || policies.length > 0) ? `
   <div class="estate-summary">
     <h3>ESTATE SUMMARY</h3>
     <p><strong>Total Estate Value:</strong> ${formatCurrency(estateValue)}</p>

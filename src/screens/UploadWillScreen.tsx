@@ -1151,7 +1151,7 @@ const UploadWillScreen: React.FC<UploadWillScreenProps> = ({ navigation, route }
   const renderMainContent = () => (
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => navigation.navigate('Dashboard')}>
             <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Draft Will</Text>

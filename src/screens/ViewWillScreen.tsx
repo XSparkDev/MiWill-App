@@ -32,6 +32,41 @@ interface ViewWillScreenProps {
   navigation: any;
 }
 
+const formatDateInput = (value: string): string => {
+  const digitsOnly = value.replace(/[^\d]/g, '').slice(0, 8);
+  const parts: string[] = [];
+  if (digitsOnly.length >= 4) {
+    parts.push(digitsOnly.slice(0, 4));
+    if (digitsOnly.length >= 6) {
+      parts.push(digitsOnly.slice(4, 6));
+      const day = digitsOnly.slice(6);
+      if (day) {
+        parts.push(day);
+      }
+    } else {
+      parts.push(digitsOnly.slice(4));
+    }
+  } else {
+    parts.push(digitsOnly);
+  }
+  return parts.filter(Boolean).join('-');
+};
+
+const isValidDateString = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const [year, month, day] = value.split('-').map(Number);
+  if (month < 1 || month > 12) return false;
+  if (day < 1 || day > 31) return false;
+  if ([4, 6, 9, 11].includes(month) && day > 30) return false;
+  if (month === 2) {
+    const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    if (day > (isLeap ? 29 : 28)) return false;
+  }
+  return true;
+};
+
 const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
   const { currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -48,6 +83,21 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
   const [savingWill, setSavingWill] = useState(false);
   const [showGuidedModal, setShowGuidedModal] = useState(false);
   const [dontShowGuidedAgain, setDontShowGuidedAgain] = useState(false);
+  const [hasReachedBottom, setHasReachedBottom] = useState(false);
+  const [footerSaving, setFooterSaving] = useState(false);
+  const [approvalModalVisible, setApprovalModalVisible] = useState(false);
+  const [showCollectionModal, setShowCollectionModal] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [collectionAddress, setCollectionAddress] = useState('');
+  const [collectionTime, setCollectionTime] = useState('');
+  const [collectionDate, setCollectionDate] = useState('');
+  const [printContactName, setPrintContactName] = useState('');
+  const [printContactEmail, setPrintContactEmail] = useState('');
+  const [printCopies, setPrintCopies] = useState('');
+  const [printNotes, setPrintNotes] = useState('');
+  const [approvalProcessing, setApprovalProcessing] = useState(false);
+  const [showProcessingOverlay, setShowProcessingOverlay] = useState(false);
+  const [processingStatusText, setProcessingStatusText] = useState('Processing...');
 
   // Form states
   const [executorForm, setExecutorForm] = useState({
@@ -70,6 +120,42 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
     beneficiary_id_number: '',
   });
 
+  const estateWideBeneficiaries = beneficiaries.filter(
+    (beneficiary) => beneficiary.inherit_entire_estate
+  );
+
+  useEffect(() => {
+    if (userProfile?.address) {
+      setCollectionAddress(prev => prev || userProfile.address || '');
+    }
+  }, [userProfile]);
+
+  useEffect(() => {
+    if (showCollectionModal) {
+      if (userProfile?.address) {
+        setCollectionAddress(userProfile.address);
+      }
+      if (!collectionDate) {
+        setCollectionDate(formatDateInput(new Date().toISOString().slice(0, 10)));
+      }
+    }
+  }, [showCollectionModal, userProfile, collectionDate]);
+
+  const prefillCollectionDetails = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    setCollectionAddress(userProfile?.address || '25 Protea Street, Johannesburg');
+    setCollectionDate(formatDateInput(today));
+    setCollectionTime('14:00');
+  };
+
+  const prefillPrintDetails = () => {
+    const defaultName = `${userProfile?.first_name || 'Thando'} ${userProfile?.surname || 'Mokoena'}`.trim();
+    setPrintContactName(defaultName || 'Thando Mokoena');
+    setPrintContactEmail(userProfile?.email || 'thando.mokoena@example.com');
+    setPrintCopies('2');
+    setPrintNotes('Please prepare two copies for signing.');
+  };
+
   const getLinkedBeneficiaries = (
     allBeneficiaries: BeneficiaryInformation[],
     assetLinks: Record<string, Record<string, number>>,
@@ -89,6 +175,12 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
 
     collectLinkedIds(assetLinks);
     collectLinkedIds(policyLinks);
+
+    allBeneficiaries.forEach(beneficiary => {
+      if (beneficiary.inherit_entire_estate) {
+        linkedIds.add(beneficiary.beneficiary_id);
+      }
+    });
 
     const filtered = allBeneficiaries.filter(ben => linkedIds.has(ben.beneficiary_id));
     return filtered.length > 0 ? filtered : allBeneficiaries;
@@ -183,19 +275,14 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
     return unsubscribe;
   }, [navigation]);
 
-  const handleSaveWill = async () => {
+  const saveWillDocument = async (): Promise<boolean> => {
     if (!currentUser || !willHTML) {
       Alert.alert('Error', 'No will content to save');
-      return;
+      return false;
     }
 
     try {
-      setSavingWill(true);
-      
-      // Save will HTML to file
       const willFileUri = await saveWillHTML(willHTML);
-
-      // Check if a digital will already exists
       const userWills = await WillService.getUserWills(currentUser.uid);
       const digitalWill = userWills.find(will => 
         will.will_type === 'document' && 
@@ -203,13 +290,11 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
       );
 
       if (digitalWill) {
-        // Update existing will
         await WillService.updateWill(digitalWill.will_id, {
           document_path: willFileUri,
           last_updated: new Date(),
         });
       } else {
-        // Create new will
         await WillService.createWill({
           user_id: currentUser.uid,
           will_type: 'document',
@@ -222,14 +307,24 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
           last_updated: new Date(),
         });
       }
-      
-      // Navigate to Dashboard after successful save
-      setTimeout(() => {
-        navigation.navigate('Dashboard');
-      }, 500);
+
+      return true;
     } catch (error: any) {
       console.error('Error saving will:', error);
       Alert.alert('Error', error.message || 'Failed to save will');
+      return false;
+    }
+  };
+
+  const handleSaveWill = async () => {
+    try {
+      setSavingWill(true);
+      const success = await saveWillDocument();
+      if (success) {
+        setTimeout(() => {
+          navigation.navigate('Dashboard');
+        }, 500);
+      }
     } finally {
       setSavingWill(false);
     }
@@ -448,6 +543,79 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
     }
   };
 
+  const handleFooterSave = async () => {
+    setFooterSaving(true);
+    const success = await saveWillDocument();
+    if (success) {
+      Alert.alert('Saved', 'Your Will has been saved.');
+    }
+    setFooterSaving(false);
+  };
+
+  const handleApprovalPress = () => {
+    setApprovalModalVisible(true);
+  };
+
+  const handleApprovalPrint = async (): Promise<boolean> => {
+    setApprovalProcessing(true);
+    const success = await saveWillDocument();
+    if (success) {
+      Alert.alert('Ready to Print', 'Your Will has been saved. You can now print the document.');
+      setApprovalModalVisible(false);
+      setShowPrintModal(false);
+    }
+    setApprovalProcessing(false);
+    return success;
+  };
+
+  const handlePrintSubmit = async () => {
+    if (!printContactName.trim()) {
+      Alert.alert('Contact Required', 'Please provide the contact name for printing.');
+      return;
+    }
+    if (!printContactEmail.trim() || !printContactEmail.includes('@')) {
+      Alert.alert('Email Required', 'Please provide a valid contact email.');
+      return;
+    }
+    const copiesNumber = parseInt(printCopies, 10);
+    if (!Number.isFinite(copiesNumber) || copiesNumber <= 0) {
+      Alert.alert('Copies Required', 'Please enter a valid number of copies.');
+      return;
+    }
+
+    console.log('[PrintRequest]', {
+      printContactName,
+      printContactEmail,
+      copiesNumber,
+      printNotes,
+    });
+
+    setProcessingStatusText('Preparing print-ready package...');
+    setShowProcessingOverlay(true);
+    const success = await handleApprovalPrint();
+    if (success) {
+      setProcessingStatusText('Print package ready!');
+      setTimeout(() => {
+        setShowProcessingOverlay(false);
+        setPrintNotes('');
+      }, 800);
+    } else {
+      setShowProcessingOverlay(false);
+    }
+  };
+
+  const handleWebViewScroll = ({ nativeEvent }: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
+    if (!contentOffset || !contentSize || !layoutMeasurement) {
+      return;
+    }
+    const reachedBottom =
+      contentOffset.y + layoutMeasurement.height >= contentSize.height - 40;
+    if (reachedBottom && !hasReachedBottom) {
+      setHasReachedBottom(true);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -462,7 +630,7 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => navigation.navigate('UploadWill')}>
           <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Your Will</Text>
@@ -504,6 +672,15 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
         </View>
       )}
 
+      {estateWideBeneficiaries.length > 0 && (
+        <View style={styles.missingInfoBanner}>
+          <Ionicons name="information-circle" size={20} color={theme.colors.primary} />
+          <Text style={styles.missingInfoText}>
+            Default estate beneficiary: {estateWideBeneficiaries.map(ben => ben.beneficiary_name || `${ben.beneficiary_first_name || ''} ${ben.beneficiary_surname || ''}`.trim()).join(', ')}
+          </Text>
+        </View>
+      )}
+
       {willHTML && (
         <WebView
           originWhitelist={['*']}
@@ -512,6 +689,8 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
           startInLoadingState
           javaScriptEnabled
           domStorageEnabled
+          onScroll={handleWebViewScroll}
+          scrollEventThrottle={16}
           onMessage={(event) => {
             const data = JSON.parse(event.nativeEvent.data);
             if (data.type === 'editBeneficiary') {
@@ -600,6 +779,38 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
           )}
         />
       )}
+
+      <View style={styles.bottomActions}>
+        <TouchableOpacity
+          style={[
+            styles.bottomButton,
+            (!hasReachedBottom || footerSaving || savingWill) && styles.bottomButtonDisabled,
+          ]}
+          disabled={!hasReachedBottom || footerSaving || savingWill}
+          onPress={handleFooterSave}
+        >
+          {footerSaving ? (
+            <ActivityIndicator color={theme.colors.buttonText} />
+          ) : (
+            <Text style={styles.bottomButtonText}>Save Will</Text>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.bottomButton,
+            styles.approvalButton,
+            (!hasReachedBottom || approvalProcessing || savingWill) && styles.bottomButtonDisabled,
+          ]}
+          disabled={!hasReachedBottom || approvalProcessing || savingWill}
+          onPress={handleApprovalPress}
+        >
+          {approvalProcessing ? (
+            <ActivityIndicator color={theme.colors.primary} />
+          ) : (
+            <Text style={styles.approvalButtonText}>Approve & Continue</Text>
+          )}
+        </TouchableOpacity>
+      </View>
 
       {/* Edit Beneficiary Modal */}
       <Modal
@@ -985,6 +1196,249 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
         </View>
       </Modal>
 
+      <Modal
+        visible={approvalModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          if (!approvalProcessing) {
+            setApprovalModalVisible(false);
+          }
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Approve Will</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (!approvalProcessing) {
+                    setApprovalModalVisible(false);
+                  }
+                }}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.approvalOptions}>
+              <TouchableOpacity
+                style={styles.approvalOptionButton}
+                onPress={() => {
+                  setApprovalModalVisible(false);
+                  setShowPrintModal(true);
+                }}
+              >
+                <Ionicons name="print-outline" size={24} color={theme.colors.primary} />
+                <View style={styles.approvalOptionTextContainer}>
+                  <Text style={styles.approvalOptionTitle}>Save & Prepare for Print</Text>
+                  <Text style={styles.approvalOptionSubtitle}>
+                    Save and ready the Will for immediate printing.
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.approvalOptionButton}
+                onPress={() => {
+                  setApprovalModalVisible(false);
+                  setShowCollectionModal(true);
+                }}
+              >
+                <Ionicons name="car-outline" size={24} color={theme.colors.primary} />
+                <View style={styles.approvalOptionTextContainer}>
+                  <Text style={styles.approvalOptionTitle}>Request Will Collection</Text>
+                  <Text style={styles.approvalOptionSubtitle}>
+                    Arrange a courier to collect the signed Will.
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showPrintModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => {
+          if (!approvalProcessing) {
+            setShowPrintModal(false);
+          }
+        }}
+      >
+        <View style={styles.guidedModalOverlay}>
+          <View style={styles.guidedModalContainer}>
+            <Ionicons name="print-outline" size={42} color={theme.colors.primary} />
+            <View style={styles.guidedModalTitleRow}>
+              <Text style={styles.guidedModalTitle}>Print Preparation</Text>
+              <TouchableOpacity
+                style={styles.guidedPrefillButton}
+                onPress={prefillPrintDetails}
+                accessibilityLabel="Prefill print details"
+                hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+              >
+                <Ionicons name="document-text-outline" size={20} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.guidedModalBody}>
+              Confirm who will receive the print-ready file and how many copies you need.
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Contact Name"
+              value={printContactName}
+              onChangeText={setPrintContactName}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Contact Email"
+              value={printContactEmail}
+              onChangeText={setPrintContactEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Number of Copies"
+              value={printCopies}
+              onChangeText={setPrintCopies}
+              keyboardType="number-pad"
+            />
+            <TextInput
+              style={[styles.input, styles.notesInput]}
+              placeholder="Special instructions (Optional)"
+              value={printNotes}
+              onChangeText={setPrintNotes}
+              multiline
+            />
+            <TouchableOpacity
+              style={styles.guidedModalPrimary}
+              onPress={handlePrintSubmit}
+              disabled={approvalProcessing}
+            >
+              {approvalProcessing ? (
+                <ActivityIndicator color={theme.colors.buttonText} />
+              ) : (
+                <Text style={styles.guidedModalPrimaryText}>Prepare for Print</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.guidedModalCheckboxContainer}
+              onPress={() => {
+                if (!approvalProcessing) {
+                  setShowPrintModal(false);
+                }
+              }}
+            >
+              <Text style={styles.approvalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showCollectionModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => {
+          if (!approvalProcessing) {
+            setShowCollectionModal(false);
+          }
+        }}
+      >
+        <View style={styles.guidedModalOverlay}>
+          <View style={styles.guidedModalContainer}>
+            <Ionicons name="car-outline" size={42} color={theme.colors.primary} />
+            <View style={styles.guidedModalTitleRow}>
+              <Text style={styles.guidedModalTitle}>Collection Details</Text>
+              <TouchableOpacity
+                style={styles.guidedPrefillButton}
+                onPress={prefillCollectionDetails}
+                accessibilityLabel="Prefill collection details"
+                hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+              >
+                <Ionicons name="document-text-outline" size={20} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.guidedModalBody}>
+              Provide the address and preferred time so we can arrange a courier to collect your signed Will.
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Collection Address"
+              value={collectionAddress}
+              onChangeText={setCollectionAddress}
+              multiline
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Collection Date (YYYY-MM-DD)"
+              value={collectionDate}
+              onChangeText={(value) => setCollectionDate(formatDateInput(value))}
+              keyboardType="number-pad"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Preferred Time (e.g. 14:00 on 24 Aug)"
+              value={collectionTime}
+              onChangeText={setCollectionTime}
+            />
+            <TouchableOpacity
+              style={styles.guidedModalPrimary}
+              onPress={async () => {
+                if (!collectionAddress.trim()) {
+                  Alert.alert('Address Required', 'Please confirm the collection address.');
+                  return;
+                }
+                if (!collectionDate.trim() || !isValidDateString(collectionDate.trim())) {
+                  Alert.alert('Collection Date', 'Please provide a valid collection date (YYYY-MM-DD).');
+                  return;
+                }
+                if (!collectionTime.trim()) {
+                  Alert.alert('Collection Time', 'Please specify a preferred collection time.');
+                  return;
+                }
+                setApprovalProcessing(true);
+                setProcessingStatusText('Booking your collection...');
+                setShowProcessingOverlay(true);
+                const saved = await saveWillDocument();
+                if (saved) {
+                  setProcessingStatusText('Collection has been booked!');
+                  setTimeout(() => {
+                    setShowProcessingOverlay(false);
+                  Alert.alert(
+                    'Collection Requested',
+                      `We will arrange collection at:\n${collectionAddress}\nDate: ${collectionDate}\nTime: ${collectionTime}`
+                  );
+                  setShowCollectionModal(false);
+                  }, 800);
+                } else {
+                  setShowProcessingOverlay(false);
+                }
+                setApprovalProcessing(false);
+              }}
+              disabled={approvalProcessing}
+            >
+              {approvalProcessing ? (
+                <ActivityIndicator color={theme.colors.buttonText} />
+              ) : (
+                <Text style={styles.guidedModalPrimaryText}>Submit Collection Request</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.guidedModalCheckboxContainer}
+              onPress={() => {
+                if (!approvalProcessing) {
+                  setShowCollectionModal(false);
+                }
+              }}
+            >
+              <Text style={styles.approvalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Floating Action Buttons */}
       <View style={styles.fabContainer}>
         <TouchableOpacity
@@ -994,7 +1448,11 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
           <Ionicons name="add" size={24} color={theme.colors.buttonText} />
         </TouchableOpacity>
         {beneficiaries.length > 0 && (
-          <View style={styles.fabMenu}>
+          <ScrollView
+            style={styles.fabMenu}
+            contentContainerStyle={styles.fabMenuContent}
+            showsVerticalScrollIndicator={false}
+          >
             {beneficiaries.map((beneficiary, index) => (
               <TouchableOpacity
                 key={beneficiary.beneficiary_id}
@@ -1004,7 +1462,7 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
                 <Text style={styles.fabLabel}>{index + 1}</Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
         )}
         {!executor && (
           <TouchableOpacity
@@ -1015,6 +1473,14 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
           </TouchableOpacity>
         )}
       </View>
+      {showProcessingOverlay && (
+        <View style={styles.processingOverlay}>
+          <View style={styles.processingContent}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <Text style={styles.processingText}>{processingStatusText}</Text>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -1050,6 +1516,41 @@ const styles = StyleSheet.create({
   webView: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  bottomActions: {
+    flexDirection: 'row',
+    gap: theme.spacing.md,
+    paddingHorizontal: theme.spacing.xl,
+    paddingVertical: theme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: '#FFFFFF',
+  },
+  bottomButton: {
+    flex: 1,
+    minHeight: 50,
+    borderRadius: theme.borderRadius.xl,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: theme.colors.buttonPrimary,
+  },
+  bottomButtonText: {
+    color: theme.colors.buttonText,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  approvalButton: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+  },
+  approvalButtonText: {
+    color: theme.colors.primary,
+    fontSize: theme.typography.sizes.md,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  bottomButtonDisabled: {
+    opacity: 0.4,
   },
   loadingContainer: {
     flex: 1,
@@ -1122,13 +1623,16 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.xs,
   },
   input: {
+    height: 56,
     backgroundColor: theme.colors.inputBackground,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.md,
+    borderWidth: 2,
+    borderColor: theme.colors.inputBorder || theme.colors.border,
+    borderRadius: theme.borderRadius.xl,
+    paddingHorizontal: theme.spacing.lg,
     fontSize: theme.typography.sizes.md,
     color: theme.colors.text,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   modalButtons: {
     flexDirection: 'row',
@@ -1162,9 +1666,44 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.semibold as any,
   },
+  approvalOptions: {
+    paddingHorizontal: theme.spacing.xl,
+    paddingVertical: theme.spacing.lg,
+    gap: theme.spacing.md,
+  },
+  approvalOptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: theme.spacing.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    gap: theme.spacing.md,
+  },
+  approvalOptionTextContainer: {
+    flex: 1,
+  },
+  approvalOptionTitle: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.text,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  approvalOptionSubtitle: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+  },
+  approvalDetailContainer: {
+    paddingHorizontal: theme.spacing.xl,
+    paddingVertical: theme.spacing.lg,
+    gap: theme.spacing.md,
+  },
+  approvalDetailText: {
+    fontSize: theme.typography.sizes.sm,
+    color: theme.colors.textSecondary,
+  },
   fabContainer: {
     position: 'absolute',
-    bottom: theme.spacing.xl,
+    bottom: theme.spacing.xl * 3.5,
     right: theme.spacing.xl,
     alignItems: 'flex-end',
     gap: theme.spacing.sm,
@@ -1196,8 +1735,13 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.secondary,
   },
   fabMenu: {
+    maxHeight: 220,
+    marginTop: theme.spacing.xs,
+  },
+  fabMenuContent: {
     gap: theme.spacing.xs,
     alignItems: 'flex-end',
+    paddingBottom: theme.spacing.xs,
   },
   fabLabel: {
     color: theme.colors.buttonText,
@@ -1280,6 +1824,55 @@ const styles = StyleSheet.create({
   guidedModalCheckboxText: {
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.text,
+  },
+  guidedModalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: theme.spacing.md,
+  },
+  guidedPrefillButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  approvalCancelText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  processingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: theme.spacing.xl,
+  },
+  processingContent: {
+    width: '80%',
+    maxWidth: 320,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.xxl,
+    paddingVertical: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.xl,
+    alignItems: 'center',
+    gap: theme.spacing.md,
+  },
+  processingText: {
+    fontSize: theme.typography.sizes.md,
+    color: theme.colors.text,
+    textAlign: 'center',
+    fontWeight: theme.typography.weights.semibold as any,
+  },
+  notesInput: {
+    height: 120,
+    textAlignVertical: 'top' as const,
   },
 });
 

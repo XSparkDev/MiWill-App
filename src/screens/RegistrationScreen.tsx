@@ -1540,7 +1540,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 
   const mainLayout = (
     <View style={styles.mainWrapper}>
-      <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea}>
       {showConfetti && (
         <View style={styles.confettiContainer} pointerEvents="none">
           {confettiAnims.map((anim, index) => (
@@ -1630,7 +1630,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
           )}
         </ScrollView>
       </KeyboardAvoidingView>
-      </SafeAreaView>
+    </SafeAreaView>
       <TouchableOpacity
         style={styles.prefillButton}
         onPress={prefillRegistrationData}
