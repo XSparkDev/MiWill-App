@@ -141,21 +141,6 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
     }
   }, [showCollectionModal, userProfile, collectionDate]);
 
-  const prefillCollectionDetails = () => {
-    const today = new Date().toISOString().slice(0, 10);
-    setCollectionAddress(userProfile?.address || '25 Protea Street, Johannesburg');
-    setCollectionDate(formatDateInput(today));
-    setCollectionTime('14:00');
-  };
-
-  const prefillPrintDetails = () => {
-    const defaultName = `${userProfile?.first_name || 'Thando'} ${userProfile?.surname || 'Mokoena'}`.trim();
-    setPrintContactName(defaultName || 'Thando Mokoena');
-    setPrintContactEmail(userProfile?.email || 'thando.mokoena@example.com');
-    setPrintCopies('2');
-    setPrintNotes('Please prepare two copies for signing.');
-  };
-
   const getLinkedBeneficiaries = (
     allBeneficiaries: BeneficiaryInformation[],
     assetLinks: Record<string, Record<string, number>>,
@@ -1271,14 +1256,6 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
             <Ionicons name="print-outline" size={42} color={theme.colors.primary} />
             <View style={styles.guidedModalTitleRow}>
               <Text style={styles.guidedModalTitle}>Print Preparation</Text>
-              <TouchableOpacity
-                style={styles.guidedPrefillButton}
-                onPress={prefillPrintDetails}
-                accessibilityLabel="Prefill print details"
-                hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-              >
-                <Ionicons name="document-text-outline" size={20} color={theme.colors.text} />
-              </TouchableOpacity>
             </View>
             <Text style={styles.guidedModalBody}>
               Confirm who will receive the print-ready file and how many copies you need.
@@ -1351,14 +1328,6 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
             <Ionicons name="car-outline" size={42} color={theme.colors.primary} />
             <View style={styles.guidedModalTitleRow}>
               <Text style={styles.guidedModalTitle}>Collection Details</Text>
-              <TouchableOpacity
-                style={styles.guidedPrefillButton}
-                onPress={prefillCollectionDetails}
-                accessibilityLabel="Prefill collection details"
-                hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-              >
-                <Ionicons name="document-text-outline" size={20} color={theme.colors.text} />
-              </TouchableOpacity>
             </View>
             <Text style={styles.guidedModalBody}>
               Provide the address and preferred time so we can arrange a courier to collect your signed Will.
@@ -1831,16 +1800,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     width: '100%',
     gap: theme.spacing.md,
-  },
-  guidedPrefillButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   approvalCancelText: {
     fontSize: theme.typography.sizes.md,

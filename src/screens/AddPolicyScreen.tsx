@@ -92,18 +92,6 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
   }]);
   const [noPoliciesYetChecked, setNoPoliciesYetChecked] = useState(false);
   const [policyCaptureSkipped, setPolicyCaptureSkipped] = useState(false);
-  const prefillPolicyForm = () => {
-    setFormData({
-      policyNumber: 'POL-987654',
-      policyType: 'life_insurance',
-      otherPolicyType: '',
-      insuranceCompany: 'Discovery Life',
-      policyValue: '2 000 000',
-      policyDescription: 'Comprehensive life cover for spouse and children',
-    });
-    setCurrentStep(0);
-  };
-
   const [formData, setFormData] = useState({
     policyNumber: '',
     policyType: '',
@@ -182,22 +170,6 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
       idNumber: '',
       address: '',
     }]);
-  };
-
-  const prefillPolicyEstateForm = (index: number) => {
-    setEstateBeneficiaryForms(prev => {
-      const updated = [...prev];
-      updated[index] = {
-        firstName: index === 0 ? 'Lerato' : 'Thando',
-        surname: index === 0 ? 'Nkosi' : 'Mokoena',
-        email: index === 0 ? 'lerato.nkosi@example.com' : 'thando.mokoena@example.com',
-        phone: formatSAPhoneNumber(index === 0 ? '0835551212' : '0823456789'),
-        relationship: index === 0 ? 'Sibling' : 'Spouse',
-        idNumber: sanitizeSouthAfricanIdNumber(index === 0 ? '9005054809083' : '8901025809086'),
-        address: index === 0 ? '12 Rose Street, Durban' : '25 Protea Street, Johannesburg',
-      };
-      return updated;
-    });
   };
 
   const addPolicyEstateBeneficiaryForm = () => {
@@ -955,13 +927,6 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
                       Beneficiary {index + 1}
                     </Text>
                     <View style={styles.estateBeneficiaryFormHeaderActions}>
-                      <TouchableOpacity
-                        style={styles.estatePrefillButton}
-                        onPress={() => prefillPolicyEstateForm(index)}
-                        disabled={estateBeneficiarySaving}
-                      >
-                        <Ionicons name="document-text-outline" size={18} color={theme.colors.text} />
-                      </TouchableOpacity>
                       {estateBeneficiaryForms.length > 1 && (
                         <TouchableOpacity
                           style={styles.removeBeneficiaryButton}
@@ -1064,7 +1029,7 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
                   <ActivityIndicator color={theme.colors.buttonText} />
                 ) : (
                   <Text style={styles.estateModalButtonPrimaryText}>
-                    Save {estateBeneficiaryForms.length === 1 ? 'Beneficiary' : 'Beneficiaries'}
+                    Save
                   </Text>
                 )}
               </TouchableOpacity>
@@ -1073,14 +1038,6 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
         </View>
       </Modal>
     </SafeAreaView>
-      <TouchableOpacity
-        style={styles.prefillButton}
-        onPress={prefillPolicyForm}
-        accessibilityLabel="Prefill policy form"
-        hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
-      >
-        <Ionicons name="document-text-outline" size={20} color={theme.colors.text} />
-      </TouchableOpacity>
     </View>
   );
 };
@@ -1448,13 +1405,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: theme.spacing.sm,
   },
-  estatePrefillButton: {
-    padding: theme.spacing.xs,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
   estateModalTitle: {
     fontSize: theme.typography.sizes.xl,
     fontWeight: theme.typography.weights.bold as any,
@@ -1542,24 +1492,6 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.md,
     fontWeight: theme.typography.weights.semibold as any,
     color: theme.colors.primary,
-  },
-  prefillButton: {
-    position: 'absolute',
-    right: theme.spacing.lg,
-    bottom: theme.spacing.lg,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    shadowColor: '#00000033',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
   },
   infoModalButton: {
     alignSelf: 'flex-end',

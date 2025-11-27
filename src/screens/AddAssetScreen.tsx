@@ -225,26 +225,6 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
   const [noAssetsYetChecked, setNoAssetsYetChecked] = useState(false);
   const [assetCaptureSkipped, setAssetCaptureSkipped] = useState(false);
   const [bankListCollapsed, setBankListCollapsed] = useState(false);
-  const prefillAssetForm = () => {
-    setFormData({
-      assetName: 'Sunset Ridge Home',
-      assetType: 'property',
-      otherAssetType: '',
-      assetDescription: 'Primary residence overlooking the ocean',
-      assetValue: '3 450 000',
-      assetLocation: 'Cape Town',
-      financingStatus: 'financed',
-      financeProviderType: 'bank',
-      financeProviderName: 'Nedbank',
-      financeProviderOther: '',
-      datePurchased: '2016-05-12',
-      repaymentTerm: '240',
-      paidUpDate: '2036-05-12',
-    });
-    setBankListCollapsed(true);
-    setCurrentStep(0);
-  };
-
   const [formData, setFormData] = useState<AssetFormState>({
     assetName: '',
     assetType: '',
@@ -404,22 +384,6 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
       idNumber: '',
       address: '',
     }]);
-  };
-
-  const prefillEstateBeneficiaryForm = (index: number) => {
-    setEstateBeneficiaryForms(prev => {
-      const updated = [...prev];
-      updated[index] = {
-        firstName: index === 0 ? 'Thando' : 'Lerato',
-        surname: index === 0 ? 'Mokoena' : 'Nkosi',
-        email: index === 0 ? 'thando.mokoena@example.com' : 'lerato.nkosi@example.com',
-        phone: formatSAPhoneNumber(index === 0 ? '0823456789' : '0835551212'),
-        relationship: index === 0 ? 'Spouse' : 'Sibling',
-        idNumber: sanitizeSouthAfricanIdNumber(index === 0 ? '8901025809086' : '9005054809083'),
-        address: index === 0 ? '25 Protea Street, Johannesburg' : '12 Rose Street, Durban',
-      };
-      return updated;
-    });
   };
 
   const addEstateBeneficiaryForm = () => {
@@ -1476,13 +1440,6 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
                       Beneficiary {index + 1}
                     </Text>
                     <View style={styles.estateBeneficiaryFormHeaderActions}>
-                      <TouchableOpacity
-                        style={styles.estatePrefillButton}
-                        onPress={() => prefillEstateBeneficiaryForm(index)}
-                        disabled={estateBeneficiarySaving}
-                      >
-                        <Ionicons name="document-text-outline" size={18} color={theme.colors.text} />
-                      </TouchableOpacity>
                       {estateBeneficiaryForms.length > 1 && (
                         <TouchableOpacity
                           style={styles.removeBeneficiaryButton}
@@ -1594,14 +1551,6 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
         </View>
       </Modal>
     </SafeAreaView>
-      <TouchableOpacity
-        style={styles.prefillButton}
-        onPress={prefillAssetForm}
-        accessibilityLabel="Prefill asset form"
-        hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
-      >
-        <Ionicons name="document-text-outline" size={20} color={theme.colors.text} />
-      </TouchableOpacity>
     </View>
   );
 };
@@ -2058,24 +2007,6 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.text,
   },
-  prefillButton: {
-    position: 'absolute',
-    right: theme.spacing.lg,
-    bottom: theme.spacing.lg,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    shadowColor: '#00000033',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
-  },
   estateModalContainer: {
     width: '100%',
     maxHeight: '90%',
@@ -2093,13 +2024,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing.sm,
-  },
-  estatePrefillButton: {
-    padding: theme.spacing.xs,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   estateModalTitle: {
     fontSize: theme.typography.sizes.xl,
