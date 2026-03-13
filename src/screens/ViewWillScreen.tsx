@@ -105,6 +105,7 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
   const [showProcessingOverlay, setShowProcessingOverlay] = useState(false);
   const [processingStatusText, setProcessingStatusText] = useState('Processing...');
   const [showCapitalLegacyConsentModal, setShowCapitalLegacyConsentModal] = useState(false);
+  const [showSignatureInfo, setShowSignatureInfo] = useState(false);
 
   // Form states
   const [executorForm, setExecutorForm] = useState({
@@ -1352,7 +1353,12 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Approve Will</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
+                <Text style={styles.modalTitle}>Approve Will</Text>
+                <TouchableOpacity onPress={() => setShowSignatureInfo(true)}>
+                  <Ionicons name="information-circle-outline" size={22} color={theme.colors.primary} />
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity
                 onPress={() => {
                   if (!approvalProcessing) {
@@ -1363,6 +1369,31 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
                 <Ionicons name="close" size={24} color={theme.colors.text} />
               </TouchableOpacity>
             </View>
+            {showSignatureInfo ? (
+              <ScrollView style={styles.modalScroll}>
+                <View style={{ alignItems: 'center', paddingVertical: theme.spacing.lg }}>
+                  <Ionicons name="information-circle-outline" size={42} color={theme.colors.primary} />
+                </View>
+                <Text style={[styles.modalTitle, { marginBottom: theme.spacing.md }]}>About Digital Signatures</Text>
+                <Text style={styles.approvalDetailText}>
+                  At present, a purely digital signature does not meet the legal requirements for a
+                  valid will under South African law. A handwritten ("wet") signature on a printed
+                  physical document remains the accepted legal standard.
+                </Text>
+                <Text style={[styles.approvalDetailText, { marginTop: theme.spacing.md }]}>
+                  Once you approve your will, we will forward a print-ready copy to your nominated
+                  address so that it can be signed in the presence of two competent witnesses, as
+                  required by the Wills Act 7 of 1953.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.guidedModalPrimary, { marginTop: theme.spacing.xl, marginBottom: theme.spacing.xl * 2 }]}
+                  onPress={() => setShowSignatureInfo(false)}
+                >
+                  <Text style={styles.guidedModalPrimaryText}>Got it</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            ) : (
+            <>
             <View style={styles.approvalOptions}>
               <TouchableOpacity
                 style={styles.approvalOptionButton}
@@ -1393,9 +1424,13 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
               userProfile.popia_accepted &&
               !userProfile.lead_submitted && (
                 <View style={styles.approvalDetailContainer}>
-                  <Text style={styles.approvalOptionTitle}>Optional: Capital Legacy Consultation</Text>
+                  <Text style={styles.approvalOptionTitle}>
+                    Well done {userProfile?.first_name || userProfile?.full_name?.split(' ')[0] || 'there'}!
+                  </Text>
                   <Text style={styles.approvalDetailText}>
-                    You qualify for a complimentary Capital Legacy consultation:
+                    Your estate qualifies for a complimentary Capital Legacy consultation. Based on your
+                    recorded estate value exceeding R250 000, you are eligible for a personalised engagement
+                    with one of our trusted estate planning specialists.
                   </Text>
                   <Text style={styles.approvalDetailText}>• Estate value above R250 000</Text>
                   <Text style={styles.approvalDetailText}>• Independent will & estate specialists</Text>
@@ -1485,6 +1520,8 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
                   </TouchableOpacity>
                 </View>
               )}
+            </>
+            )}
           </View>
         </View>
       </Modal>
