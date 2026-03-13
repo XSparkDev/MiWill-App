@@ -1664,21 +1664,40 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
         >
           <Ionicons name="add" size={24} color={theme.colors.buttonText} />
         </TouchableOpacity>
-        {beneficiaries.length > 0 && (
+        {beneficiaries.length > 0 && hasReachedBottom && (
           <ScrollView
-            style={styles.fabMenu}
+            style={[
+              styles.fabMenu,
+              beneficiaries.length > 3 && { maxHeight: 180 },
+            ]}
             contentContainerStyle={styles.fabMenuContent}
             showsVerticalScrollIndicator={false}
           >
-            {beneficiaries.map((beneficiary, index) => (
-              <TouchableOpacity
-                key={beneficiary.beneficiary_id}
-                style={[styles.fab, styles.fabSmall]}
-                onPress={() => handleEditBeneficiary(beneficiary)}
-              >
-                <Text style={styles.fabLabel}>{index + 1}</Text>
-              </TouchableOpacity>
-            ))}
+            {beneficiaries.map((beneficiary, index) => {
+              const displayName =
+                beneficiary.beneficiary_name ||
+                `${beneficiary.beneficiary_first_name || ''} ${beneficiary.beneficiary_surname || ''}`.trim() ||
+                'Beneficiary';
+
+              return (
+                <TouchableOpacity
+                  key={beneficiary.beneficiary_id}
+                  style={styles.fabBeneficiaryItem}
+                  onPress={() => handleEditBeneficiary(beneficiary)}
+                >
+                  <Text
+                    style={styles.fabBeneficiaryName}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {displayName}
+                  </Text>
+                  <View style={[styles.fab, styles.fabSmall]}>
+                    <Text style={styles.fabLabel}>{index + 1}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         )}
         {!executor && (

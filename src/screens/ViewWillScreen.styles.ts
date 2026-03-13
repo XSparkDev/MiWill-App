@@ -220,8 +220,9 @@ export const viewWillStyles = StyleSheet.create({
   },
   fabContainer: {
     position: 'absolute',
-    bottom: theme.spacing.xl * 3.5,
+    bottom: theme.spacing.xl * 6,
     right: theme.spacing.xl,
+    width: 240,
     alignItems: 'flex-end',
     gap: theme.spacing.sm,
   },
@@ -249,21 +250,40 @@ export const viewWillStyles = StyleSheet.create({
   fabSmall: {
     width: 40,
     height: 40,
+    borderRadius: 20,
     backgroundColor: theme.colors.secondary,
+    opacity: 0.75,
+    flexShrink: 0,
   },
   fabMenu: {
-    maxHeight: 220,
     marginTop: theme.spacing.xs,
   },
   fabMenuContent: {
     gap: theme.spacing.xs,
-    alignItems: 'flex-end',
+    alignItems: 'stretch',
     paddingBottom: theme.spacing.xs,
   },
   fabLabel: {
     color: theme.colors.buttonText,
     fontSize: theme.typography.sizes.sm,
     fontWeight: theme.typography.weights.bold as any,
+  },
+  fabBeneficiaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 240,
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.xs,
+    backgroundColor: 'rgba(255,255,255,0.45)',
+    borderRadius: theme.borderRadius.lg,
+    marginBottom: theme.spacing.xs,
+    gap: theme.spacing.sm,
+  },
+  fabBeneficiaryName: {
+    flex: 1,
+    color: 'rgba(30,30,30,0.75)',
+    fontSize: theme.typography.sizes.sm,
+    fontWeight: theme.typography.weights.medium as any,
   },
   guidedModalOverlay: {
     flex: 1,
