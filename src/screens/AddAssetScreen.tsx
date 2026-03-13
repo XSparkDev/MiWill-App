@@ -1075,31 +1075,31 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
                 </Text>
               </View>
             ) : (
-              <View style={styles.reviewContainer}>
-                <View style={styles.reviewRow}>
-                  <Text style={styles.reviewLabel}>Name:</Text>
-                  <Text style={styles.reviewValue}>{formData.assetName}</Text>
-                </View>
-                <View style={styles.reviewRow}>
-                  <Text style={styles.reviewLabel}>Type:</Text>
-                  <Text style={styles.reviewValue}>
+            <View style={styles.reviewContainer}>
+              <View style={styles.reviewRow}>
+                <Text style={styles.reviewLabel}>Name:</Text>
+                <Text style={styles.reviewValue}>{formData.assetName}</Text>
+              </View>
+              <View style={styles.reviewRow}>
+                <Text style={styles.reviewLabel}>Type:</Text>
+                <Text style={styles.reviewValue}>
                     {formData.assetType === 'other'
                       ? formData.otherAssetType
                       : formData.assetType.charAt(0).toUpperCase() + formData.assetType.slice(1).replace('_', ' ')}
-                  </Text>
+                </Text>
+              </View>
+              {formData.assetDescription && (
+                <View style={styles.reviewRow}>
+                  <Text style={styles.reviewLabel}>Description:</Text>
+                  <Text style={styles.reviewValue}>{formData.assetDescription}</Text>
                 </View>
-                {formData.assetDescription && (
-                  <View style={styles.reviewRow}>
-                    <Text style={styles.reviewLabel}>Description:</Text>
-                    <Text style={styles.reviewValue}>{formData.assetDescription}</Text>
-                  </View>
-                )}
-                {formData.assetValue && (
-                  <View style={styles.reviewRow}>
-                    <Text style={styles.reviewLabel}>Value:</Text>
-                    <Text style={styles.reviewValue}>R {formData.assetValue}</Text>
-                  </View>
-                )}
+              )}
+              {formData.assetValue && (
+                <View style={styles.reviewRow}>
+                  <Text style={styles.reviewLabel}>Value:</Text>
+                  <Text style={styles.reviewValue}>R {formData.assetValue}</Text>
+                </View>
+              )}
                 <View style={styles.reviewRow}>
                   <Text style={styles.reviewLabel}>Financing:</Text>
                   <Text style={styles.reviewValue}>
@@ -1129,7 +1129,7 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
                 <View style={styles.reviewRow}>
                   <Text style={styles.reviewLabel}>Date Purchased:</Text>
                   <Text style={styles.reviewValue}>{formData.datePurchased}</Text>
-                </View>
+            </View>
               </View>
             )}
           </Animated.View>
@@ -1188,17 +1188,17 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
                 )}
               </View>
               <Text style={styles.skipAssetsLabel}>I don't have any assets yet</Text>
-            </TouchableOpacity>
-          )}
+              </TouchableOpacity>
+            )}
 
           <View style={styles.buttonContainer}>
             {currentStep === totalSteps - 1 ? (
               <>
-                <TouchableOpacity
+            <TouchableOpacity
                   style={[styles.secondaryButton, saving && styles.secondaryButtonDisabled]}
                   onPress={handleLinkBeneficiaryRequest}
-                  disabled={saving}
-                >
+              disabled={saving}
+            >
                   <Text
                     style={[
                       styles.secondaryButtonText,
@@ -1216,7 +1216,7 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
                   ]}
                   onPress={() => handleSaveAsset()}
                   disabled={saving || assetCaptureSkipped}
-                >
+            >
               {saving ? (
                 <ActivityIndicator color={theme.colors.buttonText} />
               ) : (

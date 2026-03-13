@@ -20,6 +20,7 @@ import {
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { theme } from '../config/theme.config';
 import { registrationStyles as styles } from './RegistrationScreen.styles';
+import { formatCurrencyInput, parseCurrency } from '../utils/currencyFormatter';
 import * as ImagePicker from 'expo-image-picker';
 import AuthService from '../services/authService';
 import UserService from '../services/userService';
@@ -40,6 +41,11 @@ type StepData = {
   phone: string;
   firstName: string;
   surname: string;
+  dateOfBirth?: string;
+  employmentStatus?: 'employed' | 'self_employed' | 'unemployed' | 'retired' | 'student' | 'other' | '';
+  monthlyIncome?: string;
+  maritalStatus?: 'single' | 'married' | 'divorced' | 'widowed' | 'domestic_partnership' | 'other' | '';
+  leadSubmissionConsent?: boolean;
   idNumber: string;
   policyNumber: string;
   profilePicturePath: string;
@@ -89,6 +95,11 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     phone: '',
     firstName: '',
     surname: '',
+    dateOfBirth: '',
+    employmentStatus: '',
+    monthlyIncome: '',
+    maritalStatus: '',
+    leadSubmissionConsent: false,
     idNumber: '',
     policyNumber: '',
     profilePicturePath: '',
@@ -141,9 +152,15 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
   const [executorFlowView, setExecutorFlowView] = useState<'selection' | 'details' | null>(null);
   const [secondaryContactSkipped, setSecondaryContactSkipped] = useState(false);
   const [relationshipDropdownVisible, setRelationshipDropdownVisible] = useState(false);
+  const [employmentDropdownVisible, setEmploymentDropdownVisible] = useState(false);
+  const [maritalDropdownVisible, setMaritalDropdownVisible] = useState(false);
   useEffect(() => {
     if (currentStep !== 2) {
       setRelationshipDropdownVisible(false);
+    }
+    if (currentStep !== 0) {
+      setEmploymentDropdownVisible(false);
+      setMaritalDropdownVisible(false);
     }
   }, [currentStep]);
 
@@ -183,6 +200,24 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
     { label: 'Coach', value: 'coach' },
     { label: 'Other', value: 'other' },
   ];
+
+  const employmentStatusOptions = [
+    { label: 'Employed', value: 'employed' },
+    { label: 'Self-employed', value: 'self_employed' },
+    { label: 'Unemployed', value: 'unemployed' },
+    { label: 'Retired', value: 'retired' },
+    { label: 'Student', value: 'student' },
+    { label: 'Other', value: 'other' },
+  ] as const;
+
+  const maritalStatusOptions = [
+    { label: 'Single', value: 'single' },
+    { label: 'Married', value: 'married' },
+    { label: 'Divorced', value: 'divorced' },
+    { label: 'Widowed', value: 'widowed' },
+    { label: 'Domestic Partnership', value: 'domestic_partnership' },
+    { label: 'Other', value: 'other' },
+  ] as const;
 
   const [showExecutorCancelConfirm, setShowExecutorCancelConfirm] = useState(false);
   const hasExecutorAssigned = formData.hasOwnExecutor || formData.miWillExecutorAccepted;
@@ -328,6 +363,31 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
       let processedValue = value;
       if (typeof value === 'string' && phoneFields.includes(field)) {
         processedValue = formatSAPhoneNumber(value);
+      }
+      if (typeof value === 'string' && field === 'dateOfBirth') {
+        const digitsOnly = value.replace(/[^\d]/g, '').slice(0, 8);
+        const parts: string[] = [];
+        if (digitsOnly.length >= 4) {
+          parts.push(digitsOnly.slice(0, 4));
+          if (digitsOnly.length >= 6) {
+            parts.push(digitsOnly.slice(4, 6));
+            const day = digitsOnly.slice(6);
+            if (day) {
+              parts.push(day);
+            }
+          } else {
+            parts.push(digitsOnly.slice(4));
+          }
+        } else {
+          parts.push(digitsOnly);
+        }
+        processedValue = parts.filter(Boolean).join('-');
+      }
+      if (typeof value === 'string' && field === 'monthlyIncome') {
+        processedValue = formatCurrencyInput(value);
+      }
+      if (typeof value === 'string' && field === 'idNumber') {
+        processedValue = value.replace(/[^\d]/g, '').slice(0, 13);
       }
       const updated = { ...prev, [field]: processedValue };
 
@@ -740,6 +800,12 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
         policy_number: formData.policyNumber,
         profile_picture_path: formData.profilePicturePath || '',
         address: formData.address.trim(),
+        date_of_birth: formData.dateOfBirth || undefined,
+        employment_status: (formData.employmentStatus || undefined) as any,
+        monthly_income: formData.monthlyIncome ? parseCurrency(formData.monthlyIncome) : undefined,
+        marital_status: (formData.maritalStatus || undefined) as any,
+        lead_submission_consent: !!formData.leadSubmissionConsent,
+        lead_submission_consent_at: formData.leadSubmissionConsent ? new Date() : undefined,
         notification_frequency,
         custom_frequency_days: custom_days,
         popia_accepted: formData.popiaAccepted,
@@ -1008,6 +1074,134 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
 
             <TextInput
               style={styles.input}
+              placeholder="Date of Birth (YYYY-MM-DD)"
+              placeholderTextColor={theme.colors.placeholder}
+              value={formData.dateOfBirth || ''}
+              onChangeText={(value) => updateFormData('dateOfBirth', value)}
+              keyboardType="number-pad"
+            />
+
+            {/* Employment Status Dropdown */}
+            <View
+              style={[
+                styles.dropdownWrapper,
+                employmentDropdownVisible && styles.dropdownWrapperExpanded,
+              ]}
+            >
+              <TouchableOpacity
+                style={[styles.input, styles.dropdownInput]}
+                onPress={() => setEmploymentDropdownVisible(prev => !prev)}
+              >
+                <Text
+                  style={
+                    formData.employmentStatus
+                      ? styles.dropdownSelectedText
+                      : styles.dropdownPlaceholder
+                  }
+                >
+                  {formData.employmentStatus
+                    ? employmentStatusOptions.find(
+                        o => o.value === formData.employmentStatus
+                      )?.label || 'Select employment status'
+                    : 'Select employment status'}
+                </Text>
+                <Ionicons
+                  name={employmentDropdownVisible ? 'chevron-up' : 'chevron-down'}
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
+              </TouchableOpacity>
+              {employmentDropdownVisible && (
+                <View style={styles.dropdownList}>
+                  <ScrollView
+                    style={styles.dropdownScroll}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator
+                    contentContainerStyle={styles.dropdownListContent}
+                  >
+                    {employmentStatusOptions.map(option => (
+                      <TouchableOpacity
+                        key={option.value}
+                        style={styles.dropdownOption}
+                        onPress={() => {
+                          updateFormData('employmentStatus', option.value);
+                          setEmploymentDropdownVisible(false);
+                        }}
+                      >
+                        <Text style={styles.dropdownOptionText}>{option.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Monthly Income (Optional, ZAR)"
+              placeholderTextColor={theme.colors.placeholder}
+              value={formData.monthlyIncome || ''}
+              onChangeText={(value) => updateFormData('monthlyIncome', value)}
+              keyboardType="number-pad"
+            />
+
+            {/* Marital Status Dropdown */}
+            <View
+              style={[
+                styles.dropdownWrapper,
+                maritalDropdownVisible && styles.dropdownWrapperExpanded,
+              ]}
+            >
+              <TouchableOpacity
+                style={[styles.input, styles.dropdownInput]}
+                onPress={() => setMaritalDropdownVisible(prev => !prev)}
+              >
+                <Text
+                  style={
+                    formData.maritalStatus
+                      ? styles.dropdownSelectedText
+                      : styles.dropdownPlaceholder
+                  }
+                >
+                  {formData.maritalStatus
+                    ? maritalStatusOptions.find(
+                        o => o.value === formData.maritalStatus
+                      )?.label || 'Select marital status'
+                    : 'Select marital status'}
+                </Text>
+                <Ionicons
+                  name={maritalDropdownVisible ? 'chevron-up' : 'chevron-down'}
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
+              </TouchableOpacity>
+              {maritalDropdownVisible && (
+                <View style={styles.dropdownList}>
+                  <ScrollView
+                    style={styles.dropdownScroll}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator
+                    contentContainerStyle={styles.dropdownListContent}
+                  >
+                    {maritalStatusOptions.map(option => (
+                      <TouchableOpacity
+                        key={option.value}
+                        style={styles.dropdownOption}
+                        onPress={() => {
+                          updateFormData('maritalStatus', option.value);
+                          setMaritalDropdownVisible(false);
+                        }}
+                      >
+                        <Text style={styles.dropdownOptionText}>{option.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+
+            <TextInput
+              style={styles.input}
               placeholder="Email Address"
               placeholderTextColor={theme.colors.placeholder}
               value={formData.email}
@@ -1032,6 +1226,7 @@ const RegistrationScreen: React.FC<RegistrationScreenProps> = ({ navigation }) =
               value={formData.idNumber}
               onChangeText={(value) => updateFormData('idNumber', value)}
               keyboardType="numeric"
+              maxLength={13}
             />
 
             <TextInput

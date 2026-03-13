@@ -45,7 +45,7 @@ This information allows our team to tailor the approach and "hook" strategy appr
 Once a qualified, "tee'd up" lead enters our system:
 
 1. The lead is automatically allocated to a Booking Agent.
-2. The Booking Agent contacts the client to schedule an appointment with a Testamentary Consultant (TC) for the will discussion, LPP quote, and potential sale.
+2. The Booking Agent contacts the client to schedule an appointment with a Testamentary Consultant (TC) for the will discussion, LPP quote, and potential                                                   sale.
 
 ### Contact Timelines
 

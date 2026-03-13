@@ -2930,7 +2930,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
 
   return (
     <View style={styles.mainWrapper}>
-      <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea}>
       {toast && (
         <Toast
           visible={!!toast}
@@ -2946,8 +2946,8 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
         <View style={styles.header}>
           {currentStep > 0 ? (
             <TouchableOpacity onPress={previousStep} disabled={saving}>
-              <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-            </TouchableOpacity>
+            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
           ) : (
             <View style={styles.headerSpacer} />
           )}
@@ -3206,7 +3206,7 @@ const AddBeneficiaryScreen: React.FC<AddBeneficiaryScreenProps> = ({ navigation,
           </View>
         </View>
       </Modal>
-      </SafeAreaView>
+    </SafeAreaView>
       <TouchableOpacity
         style={styles.prefillButton}
         onPress={prefillBeneficiaryForm}

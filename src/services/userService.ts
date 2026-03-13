@@ -158,6 +158,25 @@ export class UserService {
   }
 
   /**
+   * Update Capital Legacy lead submission status for a user
+   */
+  static async updateLeadSubmissionStatus(
+    userId: string,
+    leadId: string
+  ): Promise<void> {
+    try {
+      await updateDoc(doc(db, this.collection, userId), {
+        lead_submitted: true,
+        lead_submitted_at: Timestamp.now(),
+        lead_submission_id: leadId,
+        updated_at: Timestamp.now(),
+      });
+    } catch (error: any) {
+      throw new Error(`Failed to update lead submission status: ${error.message}`);
+    }
+  }
+
+  /**
    * Mark onboarding as completed
    */
   static async completeOnboarding(userId: string): Promise<void> {

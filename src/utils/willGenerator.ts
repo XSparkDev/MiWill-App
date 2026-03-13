@@ -575,7 +575,7 @@ export async function generateWillHTML(
       SIGNED at <strong>${getUserAddress().split(',')[0] || 'South Africa'}</strong> on this <strong>${currentDate.getDate()}</strong> day of <strong>${currentDate.toLocaleDateString('en-ZA', { month: 'long' })} ${currentDate.getFullYear()}</strong>.
     </p>
     <div class="signature-line">
-      TESTATOR
+      BENEFICIARIES
     </div>
   </div>
 

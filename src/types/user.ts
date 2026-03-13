@@ -31,5 +31,17 @@ export interface UserProfile {
   executor_notification_dismissed?: boolean;
   created_at: Date | string;
   updated_at: Date | string;
+
+  // Capital Legacy lead integration fields
+  date_of_birth?: string; // YYYY-MM-DD
+  employment_status?: 'employed' | 'self_employed' | 'unemployed' | 'retired' | 'student' | 'other';
+  monthly_income?: number; // ZAR per month (optional)
+  marital_status?: 'single' | 'married' | 'divorced' | 'widowed' | 'domestic_partnership' | 'other';
+  total_estate_value?: number; // cached sum of assets + policies for qualification
+  lead_submission_consent?: boolean; // consent to be contacted by Capital Legacy
+  lead_submission_consent_at?: Date | string;
+  lead_submitted?: boolean; // has a Capital Legacy lead been created
+  lead_submitted_at?: Date | string;
+  lead_submission_id?: string; // Capital Legacy lead reference/id
 }
 

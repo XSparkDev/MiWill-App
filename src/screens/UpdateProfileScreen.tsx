@@ -41,6 +41,11 @@ const UpdateProfileScreen: React.FC<UpdateProfileScreenProps> = ({ navigation })
     idNumber: '',
     policyNumber: '',
     profilePicturePath: '',
+    dateOfBirth: '',
+    employmentStatus: '',
+    monthlyIncome: '',
+    maritalStatus: '',
+    leadSubmissionConsent: false,
   });
 
   useEffect(() => {
@@ -68,6 +73,11 @@ const UpdateProfileScreen: React.FC<UpdateProfileScreenProps> = ({ navigation })
           idNumber: userData.id_number || '',
           policyNumber: userData.policy_number || '',
           profilePicturePath: userData.profile_picture_path || '',
+          dateOfBirth: userData.date_of_birth || '',
+          employmentStatus: userData.employment_status || '',
+          monthlyIncome: userData.monthly_income ? String(userData.monthly_income) : '',
+          maritalStatus: userData.marital_status || '',
+          leadSubmissionConsent: !!userData.lead_submission_consent,
         });
       }
     } catch (error) {
@@ -124,6 +134,24 @@ const UpdateProfileScreen: React.FC<UpdateProfileScreenProps> = ({ navigation })
       // Add profile picture if changed
       if (formData.profilePicturePath) {
         updateData.profile_picture_path = formData.profilePicturePath;
+      }
+
+      // Capital Legacy related fields
+      if (formData.dateOfBirth) {
+        updateData.date_of_birth = formData.dateOfBirth;
+      }
+      if (formData.employmentStatus) {
+        updateData.employment_status = formData.employmentStatus as any;
+      }
+      if (formData.monthlyIncome) {
+        updateData.monthly_income = Number(formData.monthlyIncome);
+      }
+      if (formData.maritalStatus) {
+        updateData.marital_status = formData.maritalStatus as any;
+      }
+      updateData.lead_submission_consent = !!formData.leadSubmissionConsent;
+      if (formData.leadSubmissionConsent) {
+        updateData.lead_submission_consent_at = new Date();
       }
 
       await UserService.updateUser(currentUser.uid, updateData);
@@ -264,6 +292,46 @@ const UpdateProfileScreen: React.FC<UpdateProfileScreenProps> = ({ navigation })
             editable={false}
           />
           <Text style={styles.helpText}>Policy Number is auto-generated</Text>
+
+          <Text style={styles.title}>Capital Legacy Consultation Profile</Text>
+
+          <Text style={styles.label}>Date of Birth (YYYY-MM-DD)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Date of Birth (YYYY-MM-DD)"
+            placeholderTextColor={theme.colors.placeholder}
+            value={formData.dateOfBirth}
+            onChangeText={(value) => updateFormData('dateOfBirth', value)}
+            keyboardType="number-pad"
+          />
+
+          <Text style={styles.label}>Employment Status</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g., employed, self_employed, unemployed"
+            placeholderTextColor={theme.colors.placeholder}
+            value={formData.employmentStatus}
+            onChangeText={(value) => updateFormData('employmentStatus', value)}
+          />
+
+          <Text style={styles.label}>Monthly Income (Optional, ZAR)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Monthly Income"
+            placeholderTextColor={theme.colors.placeholder}
+            value={formData.monthlyIncome}
+            onChangeText={(value) => updateFormData('monthlyIncome', value)}
+            keyboardType="number-pad"
+          />
+
+          <Text style={styles.label}>Marital Status</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g., single, married, divorced"
+            placeholderTextColor={theme.colors.placeholder}
+            value={formData.maritalStatus}
+            onChangeText={(value) => updateFormData('maritalStatus', value)}
+          />
         </ScrollView>
 
         <View style={styles.footer}>

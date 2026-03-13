@@ -34,10 +34,11 @@ export const viewWillStyles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   bottomActions: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
+    flexDirection: 'column',
+    gap: theme.spacing.sm,
     paddingHorizontal: theme.spacing.xl,
-    paddingVertical: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.xl * 3,
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
     backgroundColor: '#FFFFFF',
@@ -340,6 +341,10 @@ export const viewWillStyles = StyleSheet.create({
   guidedModalCheckboxText: {
     fontSize: theme.typography.sizes.sm,
     color: theme.colors.text,
+  },
+  consentLink: {
+    color: theme.colors.primary,
+    textDecorationLine: 'underline',
   },
   guidedModalTitleRow: {
     flexDirection: 'row',
