@@ -1439,29 +1439,35 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
                     <TouchableOpacity
                       style={[
                         styles.approvalOptionButton,
+                        { flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingVertical: theme.spacing.sm },
                         appointmentType === 'single' && { borderColor: theme.colors.primary },
                       ]}
                       onPress={() => setAppointmentType('single')}
                     >
-                      <Text style={styles.approvalOptionTitle}>Single</Text>
+                      <Text style={{ fontSize: theme.typography.sizes.xs, color: 'transparent', lineHeight: 10, marginBottom: 1 }}>with</Text>
+                      <Text style={[styles.approvalOptionTitle, { textAlign: 'center' }]}>Alone</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[
                         styles.approvalOptionButton,
+                        { flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingVertical: theme.spacing.sm },
                         appointmentType === 'spouse_partner' && { borderColor: theme.colors.primary },
                       ]}
                       onPress={() => setAppointmentType('spouse_partner')}
                     >
-                      <Text style={styles.approvalOptionTitle}>Spouse/Partner</Text>
+                      <Text style={{ fontSize: theme.typography.sizes.xs, color: theme.colors.textSecondary, lineHeight: 10, marginBottom: 1 }}>with</Text>
+                      <Text style={[styles.approvalOptionTitle, { textAlign: 'center' }]}>Spouse</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[
                         styles.approvalOptionButton,
+                        { flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingVertical: theme.spacing.sm },
                         appointmentType === 'family' && { borderColor: theme.colors.primary },
                       ]}
                       onPress={() => setAppointmentType('family')}
                     >
-                      <Text style={styles.approvalOptionTitle}>Family</Text>
+                      <Text style={{ fontSize: theme.typography.sizes.xs, color: theme.colors.textSecondary, lineHeight: 10, marginBottom: 1 }}>with</Text>
+                      <Text style={[styles.approvalOptionTitle, { textAlign: 'center' }]}>Family</Text>
                     </TouchableOpacity>
                   </View>
                   <View style={styles.guidedModalCheckboxContainer}>
@@ -1609,22 +1615,31 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
         <View style={styles.guidedModalOverlay}>
           <View style={styles.guidedModalContainer}>
             <Ionicons name="car-outline" size={42} color={theme.colors.primary} />
-            <View style={styles.guidedModalTitleRow}>
-              <Text style={styles.guidedModalTitle}>Collection Details</Text>
-            </View>
+            <Text style={[styles.guidedModalTitle, { alignSelf: 'center' }]}>Collection Details</Text>
             <Text style={styles.guidedModalBody}>
               Provide the address and preferred time so we can arrange a courier to collect your signed Will.
             </Text>
+            <Text style={[styles.label, { alignSelf: 'flex-start', marginBottom: 4 }]}>
+              Collection Address
+            </Text>
             <TextInput
-              style={styles.input}
-              placeholder="Collection Address"
+              style={[styles.input, { height: 80, textAlignVertical: 'top', paddingTop: 12 }]}
+              placeholder="Where should we collect your Will?"
+              placeholderTextColor={theme.colors.textSecondary}
               value={collectionAddress}
               onChangeText={setCollectionAddress}
               multiline
             />
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', alignSelf: 'flex-start', marginTop: 4, marginBottom: 8, gap: 4 }}>
+              <Ionicons name="information-circle-outline" size={16} color={theme.colors.primary} style={{ marginTop: 1 }} />
+              <Text style={[styles.approvalDetailText, { flex: 1 }]}>
+                Pre-filled from your profile. You can change this for delivery purposes — it won't update your saved address.
+              </Text>
+            </View>
             <TextInput
               style={styles.input}
               placeholder="Collection Date (YYYY-MM-DD)"
+              placeholderTextColor={theme.colors.textSecondary}
               value={collectionDate}
               onChangeText={(value) => setCollectionDate(formatDateInput(value))}
               keyboardType="number-pad"
@@ -1632,6 +1647,7 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
             <TextInput
               style={styles.input}
               placeholder="Preferred Time (e.g. 14:00 on 24 Aug)"
+              placeholderTextColor={theme.colors.textSecondary}
               value={collectionTime}
               onChangeText={setCollectionTime}
             />
