@@ -1433,10 +1433,8 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
                     with one of our trusted estate planning specialists.
                   </Text>
                   <Text style={styles.approvalDetailText}>• Estate value above R250 000</Text>
-                  <Text style={styles.approvalDetailText}>• Independent will & estate specialists</Text>
-                  <Text style={styles.approvalDetailText}>• Free consultation, no obligation</Text>
 
-                  <Text style={styles.approvalDetailText}>Preferred consultation type (optional):</Text>
+                  <Text style={styles.approvalDetailText}>I will attend the consultation:</Text>
                   <View style={{ flexDirection: 'row', marginTop: theme.spacing.sm, gap: theme.spacing.sm }}>
                     <TouchableOpacity
                       style={[
