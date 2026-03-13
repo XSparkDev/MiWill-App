@@ -277,7 +277,8 @@ export const viewWillStyles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.45)',
     borderRadius: theme.borderRadius.lg,
     marginBottom: theme.spacing.xs,
-    gap: theme.spacing.sm,
+    gap: 4,
+    justifyContent: 'flex-end',
   },
   fabBeneficiaryName: {
     flex: 1,
