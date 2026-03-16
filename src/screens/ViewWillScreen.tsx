@@ -1054,42 +1054,6 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
         </View>
       </Modal>
 
-      {/* Capital Legacy Consent Modal */}
-      <Modal
-        visible={showCapitalLegacyConsentModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowCapitalLegacyConsentModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Capital Legacy Consent</Text>
-              <TouchableOpacity onPress={() => setShowCapitalLegacyConsentModal(false)}>
-                <Ionicons name="close" size={24} color={theme.colors.text} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={styles.modalScroll}>
-              <Text style={styles.label}>How your information is used</Text>
-              <Text style={styles.approvalDetailText}>
-                If you opt in, MiWill will share your contact details, basic profile information,
-                and a summary of your estate (asset and policy values, marital and family status)
-                with our partner Capital Legacy.
-              </Text>
-              <Text style={styles.approvalDetailText}>
-                Capital Legacy will use this information only to contact you about a complimentary
-                estate planning consultation and related products or services that may be suitable
-                for your needs.
-              </Text>
-              <Text style={styles.approvalDetailText}>
-                You are under no obligation to accept any products offered, and you may withdraw
-                your consent at any time directly with Capital Legacy. Your MiWill account and will
-                remain fully active regardless of whether you choose to opt in.
-              </Text>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
 
       {/* Add Executor Modal */}
       <Modal
@@ -1388,6 +1352,35 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
                 <TouchableOpacity
                   style={[styles.guidedModalPrimary, { marginTop: theme.spacing.xl, marginBottom: theme.spacing.xl * 2 }]}
                   onPress={() => setShowSignatureInfo(false)}
+                >
+                  <Text style={styles.guidedModalPrimaryText}>Got it</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            ) : showCapitalLegacyConsentModal ? (
+              <ScrollView style={styles.modalScroll}>
+                <View style={{ alignItems: 'center', paddingVertical: theme.spacing.lg }}>
+                  <Ionicons name="shield-checkmark-outline" size={42} color={theme.colors.primary} />
+                </View>
+                <Text style={[styles.modalTitle, { marginBottom: theme.spacing.md }]}>Capital Legacy Consent</Text>
+                <Text style={[styles.label, { marginBottom: theme.spacing.sm }]}>How your information is used</Text>
+                <Text style={styles.approvalDetailText}>
+                  If you opt in, MiWill will share your contact details, basic profile information,
+                  and a summary of your estate (asset and policy values, marital and family status)
+                  with our partner Capital Legacy.
+                </Text>
+                <Text style={[styles.approvalDetailText, { marginTop: theme.spacing.md }]}>
+                  Capital Legacy will use this information only to contact you about a complimentary
+                  estate planning consultation and related products or services that may be suitable
+                  for your needs.
+                </Text>
+                <Text style={[styles.approvalDetailText, { marginTop: theme.spacing.md }]}>
+                  You are under no obligation to accept any products offered, and you may withdraw
+                  your consent at any time directly with Capital Legacy. Your MiWill account and will
+                  remain fully active regardless of whether you choose to opt in.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.guidedModalPrimary, { marginTop: theme.spacing.xl, marginBottom: theme.spacing.xl * 2 }]}
+                  onPress={() => setShowCapitalLegacyConsentModal(false)}
                 >
                   <Text style={styles.guidedModalPrimaryText}>Got it</Text>
                 </TouchableOpacity>

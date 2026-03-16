@@ -355,10 +355,6 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     }
   };
 
-  const handleAddAssetPolicy = () => {
-    navigation.navigate('AddAsset');
-  };
-
   const handleAddAsset = () => {
     navigation.navigate('AddAsset');
   };
@@ -1321,45 +1317,45 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           </View>
         </View>
 
+        {/* Edit Will — pill design */}
         <View style={styles.assetsPoliciesPill}>
           <TouchableOpacity
-            style={[
-              styles.assetsPoliciesTab,
-              selectedManagement === 'assets' && styles.assetsPoliciesTabActive,
-            ]}
-            onPress={() =>
-              setSelectedManagement(prev => (prev === 'assets' ? null : 'assets'))
-            }
+            style={styles.assetsPoliciesTab}
+            onPress={handleUploadWill}
           >
-            <Text
-              style={[
-                styles.assetsPoliciesTabText,
-                selectedManagement === 'assets' && styles.assetsPoliciesTabTextActive,
-              ]}
-            >
-              Assets
+            <Text style={styles.assetsPoliciesTabText}>
+              {hasWill ? 'Edit Will' : 'Draft will'}
             </Text>
           </TouchableOpacity>
         </View>
 
-        {selectedManagement === 'assets' && renderAssetsManager()}
-
         {/* Action Buttons */}
         <View style={styles.actionsContainer}>
-          <TouchableOpacity style={styles.actionButton} onPress={handleAddAssetPolicy}>
-            <Text style={styles.actionButtonText}>Add Asset</Text>
-          </TouchableOpacity>
+          {/* Add Asset — first button (eye icon toggles asset list inline) */}
+          <View style={styles.actionButton}>
+            <TouchableOpacity
+              style={{ flex: 1, justifyContent: 'center', alignItems: 'center', height: '100%' }}
+              onPress={handleAddAsset}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.actionButtonText}>Add Asset</Text>
+            </TouchableOpacity>
+            <View style={{ width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.35)' }} />
+            <TouchableOpacity
+              style={{ paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center', height: '100%' }}
+              onPress={() => setSelectedManagement(prev => (prev === 'assets' ? null : 'assets'))}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name={selectedManagement === 'assets' ? 'eye' : 'eye-outline'}
+                size={22}
+                color={theme.colors.buttonText}
+              />
+            </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity style={styles.actionButton} onPress={handleUploadWill}>
-            <View style={styles.uploadWillButton}>
-              <Text style={styles.actionButtonText}>{hasWill ? 'Edit Will' : 'Draft will'}</Text>
-              {!hasWill && (
-                <View style={styles.urgentIndicator}>
-                  <Text style={styles.urgentText}>!</Text>
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
+          {/* Assets panel — expands inline below Add Asset */}
+          {selectedManagement === 'assets' && renderAssetsManager()}
 
           <TouchableOpacity 
             style={[
