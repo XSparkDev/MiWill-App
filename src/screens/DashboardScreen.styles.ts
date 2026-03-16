@@ -116,6 +116,11 @@ export const dashboardStyles = StyleSheet.create({
     borderColor: theme.colors.primary,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.surface,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
   },
   assetsPoliciesTab: {
     paddingHorizontal: theme.spacing.xl,

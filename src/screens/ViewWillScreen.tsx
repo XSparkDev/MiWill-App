@@ -90,7 +90,6 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
   const [showGuidedModal, setShowGuidedModal] = useState(false);
   const [dontShowGuidedAgain, setDontShowGuidedAgain] = useState(false);
   const [hasReachedBottom, setHasReachedBottom] = useState(false);
-  const [footerSaving, setFooterSaving] = useState(false);
   const [approvalModalVisible, setApprovalModalVisible] = useState(false);
   const [showCollectionModal, setShowCollectionModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
@@ -589,15 +588,6 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
     }
   };
 
-  const handleFooterSave = async () => {
-    setFooterSaving(true);
-    const success = await saveWillDocument();
-    if (success) {
-      Alert.alert('Saved', 'Your Will has been saved.');
-    }
-    setFooterSaving(false);
-  };
-
   const handleApprovalPress = () => {
     setApprovalModalVisible(true);
   };
@@ -718,9 +708,7 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
     }
     const reachedBottom =
       contentOffset.y + layoutMeasurement.height >= contentSize.height - 40;
-    if (reachedBottom && !hasReachedBottom) {
-      setHasReachedBottom(true);
-    }
+    setHasReachedBottom(reachedBottom);
   };
 
   if (loading) {
@@ -742,17 +730,6 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Your Will</Text>
         <View style={styles.headerRight}>
-          <TouchableOpacity 
-            onPress={handleSaveWill}
-            disabled={savingWill || !willHTML}
-            style={styles.saveButton}
-          >
-            {savingWill ? (
-              <ActivityIndicator size="small" color={theme.colors.primary} />
-            ) : (
-              <Ionicons name="save-outline" size={24} color={theme.colors.primary} />
-            )}
-          </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate('AddBeneficiary')}>
             <Ionicons name="add-circle-outline" size={24} color={theme.colors.primary} />
           </TouchableOpacity>
@@ -901,20 +878,6 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
             <ActivityIndicator color={theme.colors.primary} />
           ) : (
             <Text style={styles.approvalButtonText}>Approve Will</Text>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.bottomButton,
-            (!hasReachedBottom || footerSaving || savingWill) && styles.bottomButtonDisabled,
-          ]}
-          disabled={!hasReachedBottom || footerSaving || savingWill}
-          onPress={handleFooterSave}
-        >
-          {footerSaving ? (
-            <ActivityIndicator color={theme.colors.buttonText} />
-          ) : (
-            <Text style={styles.bottomButtonText}>Save Will</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -1405,7 +1368,7 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
               >
                 <Ionicons name="print-outline" size={24} color={theme.colors.primary} />
                 <View style={styles.approvalOptionTextContainer}>
-                  <Text style={styles.approvalOptionTitle}>Save & Prepare for Print</Text>
+                  <Text style={styles.approvalOptionTitle}>Save and ready</Text>
                   <Text style={styles.approvalOptionSubtitle}>
                     Save and ready the Will for immediate printing.
                   </Text>
@@ -1416,18 +1379,30 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
               userProfile.total_estate_value >= 250000 &&
               userProfile.popia_accepted &&
               !userProfile.lead_submitted && (
-                <View style={styles.approvalDetailContainer}>
-                  <Text style={styles.approvalOptionTitle}>
+                <View style={[styles.approvalDetailContainer, { gap: theme.spacing.sm }]}>
+                  <Text style={[styles.approvalOptionTitle, {
+                    fontSize: theme.typography.sizes.xxl,
+                    textAlign: 'center',
+                  }]}>
                     Well done {userProfile?.first_name || userProfile?.full_name?.split(' ')[0] || 'there'}!
                   </Text>
+                  <Text style={[styles.approvalDetailText, { textAlign: 'center' }]}>
+                    Estate value —{' '}
+                    <Text style={{ fontWeight: 'bold', color: theme.colors.text }}>
+                      {`R ${(userProfile.total_estate_value ?? 0).toLocaleString('en-ZA', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}`}
+                    </Text>
+                  </Text>
                   <Text style={styles.approvalDetailText}>
-                    Your estate qualifies for a complimentary Capital Legacy consultation. Based on your
+                    Your estate qualifies for a Capital Legacy consultation. Based on your
                     recorded estate value exceeding R250 000, you are eligible for a personalised engagement
                     with one of our trusted estate planning specialists.
                   </Text>
                   <Text style={styles.approvalDetailText}>• Estate value above R250 000</Text>
 
-                  <Text style={styles.approvalDetailText}>I will attend the consultation:</Text>
+                  <Text style={styles.approvalDetailText}>Will you be attending the consultation:</Text>
                   <View style={{ flexDirection: 'row', marginTop: theme.spacing.sm, gap: theme.spacing.sm }}>
                     <TouchableOpacity
                       style={[
@@ -1744,6 +1719,17 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
             })}
           </ScrollView>
         )}
+        <TouchableOpacity
+          style={[styles.fab, styles.fabSecondary]}
+          onPress={handleSaveWill}
+          disabled={savingWill || !willHTML}
+        >
+          {savingWill ? (
+            <ActivityIndicator size="small" color={theme.colors.buttonText} />
+          ) : (
+            <Ionicons name="save-outline" size={20} color={theme.colors.buttonText} />
+          )}
+        </TouchableOpacity>
         {!executor && (
           <TouchableOpacity
             style={[styles.fab, styles.fabSecondary]}

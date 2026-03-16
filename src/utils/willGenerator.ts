@@ -574,9 +574,6 @@ export async function generateWillHTML(
     <p class="clause-text">
       This was generated at <strong>${getUserAddress().split(',')[0] || 'Not Specified'}</strong> on this <strong>${currentDate.getDate()}</strong> day of <strong>${currentDate.toLocaleDateString('en-ZA', { month: 'long' })} ${currentDate.getFullYear()}</strong>.
     </p>
-    <div class="signature-line">
-      BENEFICIARIES
-    </div>
   </div>
 
   <div class="footer">
