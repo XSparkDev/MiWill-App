@@ -262,47 +262,21 @@ export interface UserProfile {
 export type AppointmentType = 'single' | 'spouse_partner' | 'family';
 
 export interface LeadSubmissionData {
-  // Client Information
   client_age: number;
-  client_email: string;
-  client_phone: string;
-  client_full_name: string;
-  client_id_number: string;
-  client_address: string;
-  
-  // Qualification Data
-  total_estate_value: number; // Sum of assets + policies
-  monthly_income?: number; // Optional
   employment_status: string;
-  marital_status: string;
-  
-  // Asset Information
+  has_minor_children: boolean;
   has_property: boolean;
   has_vehicle: boolean;
   has_other_assets: boolean;
-  asset_details?: string; // Summary of assets
-  asset_values?: {
-    total_assets: number;
-    total_policies: number;
-    estate_total: number;
-  };
-  
-  // Family Information
-  has_minor_children: boolean;
-  minor_children_count?: number;
-  
-  // Appointment Details
+  marital_status: string;
+  client_address: string;
   appointment_type: AppointmentType;
-  
-  // Consent & Compliance
-  popia_consent: boolean;
-  consent_timestamp: string;
-  
-  // Metadata
-  source: 'miwill_app';
-  user_id: string; // Internal reference
 }
 ```
+
+This outbound type is intentionally narrower than MiWill's internal user model. POPIA,
+lead consent, estate threshold, submission tracking, and related timestamps remain stored
+in MiWill and are not serialized into the Capital Legacy request body.
 
 ### Phase 2: Service Implementation
 
@@ -618,7 +592,7 @@ const handleLeadSubmission = async (appointmentType: AppointmentType) => {
   ]);
   
   // Build lead data from user profile, assets, policies, beneficiaries
-  // Uses stored total_estate_value from userProfile
+  // Uses internal MiWill data to derive only the partner-required outbound fields
   const leadData = await buildLeadSubmissionData(
     userProfile, 
     appointmentType, 
@@ -628,9 +602,9 @@ const handleLeadSubmission = async (appointmentType: AppointmentType) => {
   );
   
   // IMPORTANT: Always save data to MiWill first (existing behavior)
-  // Data is already saved through normal app flow
+  // POPIA, threshold, timestamps, and submission-tracking fields remain in MiWill only
   
-  // Submit to Capital Legacy API
+  // Submit only the partner-required payload to Capital Legacy API
   const result = await LeadService.submitLead(leadData);
   
   if (result.success && result.leadId) {
@@ -665,15 +639,6 @@ export async function buildLeadSubmissionData(
     ? LeadService.calculateAge(userProfile.date_of_birth)
     : 0;
 
-  // Use stored estate value (calculated once after assets/beneficiaries added)
-  // If not stored, calculate as fallback (shouldn't happen in normal flow)
-  const totalEstateValue = userProfile.total_estate_value || 
-    LeadService.calculateTotalEstateValue(assets, policies);
-  
-  // Calculate breakdown for API (using current assets/policies)
-  const totalAssets = assets.reduce((sum, asset) => sum + (asset.asset_value || 0), 0);
-  const totalPolicies = policies.reduce((sum, policy) => sum + (policy.policy_value || 0), 0);
-
   // Check for property ownership
   const hasProperty = assets.some(asset => asset.asset_type === 'property');
 
@@ -686,15 +651,6 @@ export async function buildLeadSubmissionData(
   );
   const hasOtherAssets = otherAssets.length > 0;
 
-  // Build asset summary
-  const assetDetails = [
-    hasProperty && 'Property',
-    hasVehicle && 'Vehicle',
-    otherAssets.length > 0 && `${otherAssets.length} other asset(s)`,
-  ]
-    .filter(Boolean)
-    .join(', ');
-
   // Check for minor children
   const minorChildren = beneficiaries.filter(
     ben => ben.relationship_to_user?.toLowerCase().includes('child')
@@ -702,47 +658,15 @@ export async function buildLeadSubmissionData(
   const hasMinorChildren = minorChildren.length > 0;
 
   return {
-    // Client Information
     client_age: age,
-    client_email: userProfile.email,
-    client_phone: userProfile.phone,
-    client_full_name: `${userProfile.first_name} ${userProfile.surname}`.trim(),
-    client_id_number: userProfile.id_number,
-    client_address: userProfile.address || '',
-
-    // Qualification Data
-    total_estate_value: totalEstateValue,
-    monthly_income: userProfile.monthly_income,
     employment_status: userProfile.employment_status || 'other',
-    marital_status: userProfile.marital_status || 'single',
-
-    // Asset Information
+    has_minor_children: hasMinorChildren,
     has_property: hasProperty,
     has_vehicle: hasVehicle,
     has_other_assets: hasOtherAssets,
-    asset_details: assetDetails,
-    asset_values: {
-      total_assets: totalAssets,
-      total_policies: totalPolicies,
-      estate_total: totalEstateValue,
-    },
-
-    // Family Information
-    has_minor_children: hasMinorChildren,
-    minor_children_count: minorChildren.length,
-
-    // Appointment Details
+    marital_status: userProfile.marital_status || 'single',
+    client_address: userProfile.address || '',
     appointment_type: appointmentType,
-
-    // Consent & Compliance
-    popia_consent: userProfile.popia_accepted,
-    consent_timestamp: userProfile.popia_accepted_at
-      ? new Date(userProfile.popia_accepted_at).toISOString()
-      : new Date().toISOString(),
-
-    // Metadata
-    source: 'miwill_app',
-    user_id: userProfile.user_id,
   };
 }
 ```
@@ -955,7 +879,7 @@ EXPO_PUBLIC_LEAD_API_KEY=your_capital_legacy_api_key_here
 
 ### Data Model
 - [ ] Add new fields to `UserProfile` interface (including `total_estate_value`)
-- [ ] Create `LeadSubmissionData` type (with `total_estate_value` and `asset_values`)
+- [ ] Create `LeadSubmissionData` type with only the partner-required outbound fields
 - [ ] Create `AppointmentType` type
 
 ### Services

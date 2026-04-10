@@ -72,37 +72,14 @@ The payload sent to Capital Legacy is a single JSON object with the following st
 ```json
 {
   "client_age": 0,
-  "client_email": "",
-  "client_phone": "",
-  "client_full_name": "",
-  "client_id_number": "",
-  "client_address": "",
-
-  "total_estate_value": 0,
-  "monthly_income": null,
   "employment_status": "",
-  "marital_status": "",
-
+  "has_minor_children": false,
   "has_property": false,
   "has_vehicle": false,
   "has_other_assets": false,
-  "asset_details": "",
-  "asset_values": {
-    "total_assets": 0,
-    "total_policies": 0,
-    "estate_total": 0
-  },
-
-  "has_minor_children": false,
-  "minor_children_count": 0,
-
-  "appointment_type": "",
-
-  "popia_consent": true,
-  "consent_timestamp": "",
-
-  "source": "miwill_app",
-  "user_id": ""
+  "marital_status": "",
+  "client_address": "",
+  "appointment_type": ""
 }
 ```
 
@@ -113,31 +90,10 @@ The payload sent to Capital Legacy is a single JSON object with the following st
 - **`client_age`** (number, required)  
   - Derived from date of birth at time of lead creation (in full years).
 
-- **`client_email`** (string, required)  
-  - Primary email address for the MiWill user.
-
-- **`client_phone`** (string, required)  
-  - Normalized South African phone number (e.g. `+27 82 123 4567`).
-
-- **`client_full_name`** (string, required)  
-  - Concatenation of first name and surname, e.g. `"Thando Mokoena"`.
-
-- **`client_id_number`** (string, required)  
-  - South African ID number as stored and validated in MiWill.
-
 - **`client_address`** (string, required)  
   - Primary residential address, ideally full street address (as stored in MiWill).
 
 ##### 4.2.2 Qualification Data
-
-- **`total_estate_value`** (number, required)  
-  - Total estate value in **ZAR** at the point of calculation:  
-    `sum(asset_value for all assets) + sum(policy_value for all policies)`.  
-  - **Threshold:** Only leads with `total_estate_value ≥ 250000` are sent.
-
-- **`monthly_income`** (number, optional)  
-  - Self-reported gross monthly income in **ZAR** (if supplied by the user).
-  - May be `null` or omitted if not collected.
 
 - **`employment_status`** (string, required)  
   - One of:  
@@ -168,27 +124,10 @@ The payload sent to Capital Legacy is a single JSON object with the following st
 - **`has_other_assets`** (boolean, required)  
   - `true` if any assets exist that are **not** `property` or `vehicle`.
 
-- **`asset_details`** (string, optional)  
-  - Human-readable summary of high-level asset categories, for example:  
-    - `"Property, Vehicle"`  
-    - `"Property, 3 other asset(s)"`  
-    - `"5 other asset(s)"`.
-
-- **`asset_values`** (object, required)
-  - **`total_assets`** (number, required)  
-    - Sum of `asset_value` across all assets (ZAR).
-  - **`total_policies`** (number, required)  
-    - Sum of `policy_value` across all policies (ZAR).
-  - **`estate_total`** (number, required)  
-    - Same as `total_estate_value` above (redundant but convenient for reporting).
-
 ##### 4.2.4 Family / Dependants
 
 - **`has_minor_children`** (boolean, required)  
   - `true` if any beneficiary has a relationship indicating they are a child and is flagged/treated as a minor.
-
-- **`minor_children_count`** (number, optional)  
-  - Count of such minor beneficiaries (e.g. `2` for two minor children).
 
 ##### 4.2.5 Appointment & Engagement
 
@@ -200,23 +139,19 @@ The payload sent to Capital Legacy is a single JSON object with the following st
     - `"family"` – Broader family consultation
   - This is selected by the user from a dropdown at the time of lead creation.
 
-##### 4.2.6 Consent & Compliance
+##### 4.2.6 Internal MiWill-Only Fields
 
-- **`popia_consent`** (boolean, required)  
-  - `true` if the user has accepted MiWill’s POPIA terms and explicitly consented to being contacted by Capital Legacy for a consultation.
-  - Leads are **never** sent with this value set to `false`.
+The following values remain part of MiWill's internal compliance, qualification, and audit model, but are **not included in the outbound Capital Legacy request body**:
 
-- **`consent_timestamp`** (string, required, ISO 8601)  
-  - Timestamp (UTC) when Capital Legacy–specific consent was captured, e.g. `"2026-02-26T09:15:23.000Z"`.
-
-##### 4.2.7 Metadata
-
-- **`source`** (string, required)  
-  - Fixed value: `"miwill_app"`.
-
-- **`user_id`** (string, required)  
-  - MiWill’s internal user identifier (Firebase UID / primary key).  
-  - Useful for reconciliation and troubleshooting between systems.
+- `popia_accepted`
+- `popia_accepted_at`
+- `lead_submission_consent`
+- `lead_submission_consent_at`
+- `lead_submitted`
+- `lead_submitted_at`
+- `lead_submission_id`
+- `total_estate_value`
+- Internal timestamps and other gating flags
 
 ---
 
@@ -225,46 +160,37 @@ The payload sent to Capital Legacy is a single JSON object with the following st
 ```json
 {
   "client_age": 42,
-  "client_email": "thando.mokoena@example.com",
-  "client_phone": "+27 82 123 4567",
-  "client_full_name": "Thando Mokoena",
-  "client_id_number": "8001015009087",
-  "client_address": "25 Protea Street, Johannesburg, Gauteng, 2191",
-
-  "total_estate_value": 950000,
-  "monthly_income": 45000,
   "employment_status": "employed",
-  "marital_status": "married",
-
+  "has_minor_children": true,
   "has_property": true,
   "has_vehicle": true,
   "has_other_assets": true,
-  "asset_details": "Property, Vehicle, 3 other asset(s)",
-  "asset_values": {
-    "total_assets": 750000,
-    "total_policies": 200000,
-    "estate_total": 950000
-  },
-
-  "has_minor_children": true,
-  "minor_children_count": 2,
-
-  "appointment_type": "spouse_partner",
-
-  "popia_consent": true,
-  "consent_timestamp": "2026-02-26T09:15:23.000Z",
-
-  "source": "miwill_app",
-  "user_id": "firebase-uid-123"
+  "marital_status": "married",
+  "client_address": "25 Protea Street, Johannesburg, Gauteng, 2191",
+  "appointment_type": "spouse_partner"
 }
 ```
+
+#### 5.1 Postman Test Setup
+
+Use the same request shape as the app:
+
+- **Method:** `POST`
+- **URL:** `{{EXPO_PUBLIC_LEAD_API_URL}}/leads`
+- **Headers:**
+  - `Content-Type: application/json`
+  - `Authorization: Bearer {{EXPO_PUBLIC_LEAD_API_KEY}}`
+- **Body:** Raw JSON using only the fields shown in the example payload above
+
+MiWill should continue to keep POPIA flags, lead-consent fields, estate-threshold checks,
+timestamps, and submission-tracking data in Firebase only.
 
 ---
 
 ### 6. Lead Frequency & Idempotency
 
 - MiWill will send **at most one active lead per user** for Capital Legacy, identified internally by `lead_submission_id`.
-- If a lead submission fails (e.g. network error), MiWill may **retry with the same payload**, ensuring Capital Legacy can treat it as an idempotent operation if desired (e.g. by deduplicating on `client_id_number` + `consent_timestamp`).
+- If a lead submission fails (e.g. network error), MiWill may **retry with the same payload**, while continuing to manage deduplication and submission tracking internally through `lead_submission_id` and related Firebase state.
 - MiWill does **not** send continuous updates; subsequent estate changes remain internal unless separately agreed.
 
 ---
@@ -276,6 +202,7 @@ The payload sent to Capital Legacy is a single JSON object with the following st
   - Performs POPIA-compliant consent capture and storage.
   - Performs estate value calculations and qualification logic.
   - Pushes a single, well-formed lead payload to Capital Legacy when criteria are met.
+  - Keeps all consent, audit, threshold, and one-time submission tracking fields internal to MiWill.
 
 - **Capital Legacy**
   - Receives and ingests the lead payload.
@@ -290,11 +217,13 @@ No direct database access from Capital Legacy into MiWill is required or provide
 
 - MiWill sends **qualified, consented** leads only (estate ≥ R250,000 with explicit contact permission).
 - Payloads are **single JSON objects** with clearly defined fields for:
-  - Client profile
-  - Estate value and asset mix
-  - Family/minor children context
+  - Client age
+  - Employment status
+  - Minor-children indicator
+  - Asset-category indicators
+  - Marital status
+  - Full address
   - Preferred appointment type
-  - POPIA consent & timestamp
 - MiWill remains the **system of record** for underlying user, asset, and policy data.
 
 This document should provide Capital Legacy with everything needed to design their intake endpoint, validation, and internal lead routing.

@@ -175,45 +175,15 @@ lead_submission_id?: string; // Capital Legacy lead reference
 export type AppointmentType = 'single' | 'spouse_partner' | 'family';
 
 export interface LeadSubmissionData {
-  // Client Information
   client_age: number;
-  client_email: string;
-  client_phone: string;
-  client_full_name: string;
-  client_id_number: string;
-  client_address: string;
-
-  // Qualification Data
-  total_estate_value: number;
-  monthly_income?: number;
   employment_status: string;
-  marital_status: string;
-
-  // Asset Information
+  has_minor_children: boolean;
   has_property: boolean;
   has_vehicle: boolean;
   has_other_assets: boolean;
-  asset_details?: string;
-  asset_values?: {
-    total_assets: number;
-    total_policies: number;
-    estate_total: number;
-  };
-
-  // Family Information
-  has_minor_children: boolean;
-  minor_children_count?: number;
-
-  // Appointment Details
+  marital_status: string;
+  client_address: string;
   appointment_type: AppointmentType;
-
-  // Consent & Compliance
-  popia_consent: boolean;
-  consent_timestamp: string; // ISO 8601
-
-  // Metadata
-  source: 'miwill_app';
-  user_id: string;
 }
 ```
 
@@ -242,15 +212,16 @@ export interface LeadSubmissionData {
 
 **Responsibilities:**
 - Calculates client age from date of birth
-- Aggregates asset/policy values and categories
+- Aggregates asset categories for partner-required booleans
 - Identifies minor children from beneficiaries
-- Builds complete `LeadSubmissionData` payload matching Capital Legacy requirements
+- Builds the outbound `LeadSubmissionData` payload with only the partner-required fields
+- Leaves POPIA, estate-threshold, and submission-tracking fields in MiWill only
 
 **Data Mapping:**
-- User profile → Client information
-- Assets/Policies → Asset information and values
-- Beneficiaries → Family information (minor children)
-- User selections → Appointment type and consent timestamps
+- User profile → Age, employment status, marital status, full address
+- Assets/Policies → Property/vehicle/other-asset booleans
+- Beneficiaries → Minor-children boolean
+- User selections → Appointment type
 
 ### 3. UI Components
 
@@ -362,7 +333,24 @@ Authorization: Bearer ${EXPO_PUBLIC_LEAD_API_KEY}
 ```
 
 **Request Body:**
-Complete `LeadSubmissionData` object as JSON
+Only the partner-required `LeadSubmissionData` fields as JSON:
+
+```json
+{
+  "client_age": 42,
+  "employment_status": "employed",
+  "has_minor_children": true,
+  "has_property": true,
+  "has_vehicle": true,
+  "has_other_assets": true,
+  "marital_status": "married",
+  "client_address": "25 Protea Street, Johannesburg, Gauteng, 2191",
+  "appointment_type": "spouse_partner"
+}
+```
+
+MiWill continues to store `popia_accepted`, `lead_submission_consent`, `lead_submitted`,
+`lead_submission_id`, `total_estate_value`, and related timestamps internally in Firebase.
 
 **Response Handling:**
 - Success: Returns `{ lead_id: string }` or `{ id: string }`

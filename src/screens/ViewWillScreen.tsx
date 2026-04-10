@@ -1327,19 +1327,20 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
                 <Text style={[styles.modalTitle, { marginBottom: theme.spacing.md }]}>Capital Legacy Consent</Text>
                 <Text style={[styles.label, { marginBottom: theme.spacing.sm }]}>How your information is used</Text>
                 <Text style={styles.approvalDetailText}>
-                  If you opt in, MiWill will share your contact details, basic profile information,
-                  and a summary of your estate (asset and policy values, marital and family status)
-                  with our partner Capital Legacy.
+                  If you opt in, MiWill will share limited consultation information with our
+                  partner Capital Legacy. This includes your age, employment status, marital
+                  status, full address, consultation type, and whether you have minor children,
+                  property, vehicles, or other assets.
                 </Text>
                 <Text style={[styles.approvalDetailText, { marginTop: theme.spacing.md }]}>
-                  Capital Legacy will use this information only to contact you about a complimentary
-                  estate planning consultation and related products or services that may be suitable
-                  for your needs.
+                  MiWill keeps your POPIA records, internal consent history, estate-value
+                  qualification checks, timestamps, and submission tracking in its own systems.
+                  Those internal compliance fields are not part of the Capital Legacy request body.
                 </Text>
                 <Text style={[styles.approvalDetailText, { marginTop: theme.spacing.md }]}>
-                  You are under no obligation to accept any products offered, and you may withdraw
-                  your consent at any time directly with Capital Legacy. Your MiWill account and will
-                  remain fully active regardless of whether you choose to opt in.
+                  Your MiWill account and will remain fully active regardless of whether you choose
+                  to opt in, and you are under no obligation to continue with any consultation that
+                  may be offered.
                 </Text>
                 <TouchableOpacity
                   style={[styles.guidedModalPrimary, { marginTop: theme.spacing.xl, marginBottom: theme.spacing.xl * 2 }]}
@@ -1464,8 +1465,8 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
                       >
                         consent
                       </Text>{' '}
-                      to MiWill sharing my details and estate summary with Capital Legacy so they
-                      can contact me about a consultation.
+                      to MiWill sharing limited consultation information with Capital Legacy for
+                      consultation intake.
                     </Text>
                   </View>
 
