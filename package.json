@@ -10,8 +10,7 @@
     "build": "expo build",
     "lint": "eslint .",
     "test": "jest",
-    "type-check": "tsc --noEmit",
-    "lead:mock": "node scripts/mock-capital-legacy-server.js"
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@expo-google-fonts/montserrat": "^0.2.3",

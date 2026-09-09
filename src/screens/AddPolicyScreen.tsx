@@ -296,7 +296,10 @@ const AddPolicyScreen: React.FC<AddPolicyScreenProps> = ({ navigation, route }) 
           setShowToast(true);
           return;
         }
-        setShowEstateBeneficiaryModal(true);
+        navigation.navigate('AddBeneficiary', {
+          fromGuidedFlow: fromGuidedWill,
+          returnTo: fromGuidedWill ? 'Dashboard' : undefined,
+        });
         return;
     }
 

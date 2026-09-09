@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.xsparkdev.miwill",
-      "buildNumber": "1",
+      "buildNumber": "8",
       "icon": "./assets/logo10.png"
     },
     "android": {

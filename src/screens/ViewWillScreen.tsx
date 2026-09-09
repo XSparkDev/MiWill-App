@@ -26,9 +26,6 @@ import { ExecutorInformation } from '../types/executor';
 import { BeneficiaryInformation } from '../types/beneficiary';
 import { formatSAPhoneNumber } from '../utils/phoneFormatter';
 import { shouldShowModal, setDontShowAgain } from '../utils/modalPreferences';
-import LeadService from '../services/leadService';
-import { buildLeadSubmissionData } from '../utils/leadDataBuilder';
-import { AppointmentType } from '../types/lead';
 import { viewWillStyles as styles } from './ViewWillScreen.styles';
 
 interface ViewWillScreenProps {
@@ -74,12 +71,10 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
   const { currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [willHTML, setWillHTML] = useState<string | null>(null);
+  const [willLoadError, setWillLoadError] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [executor, setExecutor] = useState<ExecutorInformation | null>(null);
   const [beneficiaries, setBeneficiaries] = useState<BeneficiaryInformation[]>([]);
-  const [capitalLegacyOptIn, setCapitalLegacyOptIn] = useState(false);
-  const [capitalLegacySubmitting, setCapitalLegacySubmitting] = useState(false);
-  const [appointmentType, setAppointmentType] = useState<AppointmentType>('single');
   
   // Editing states
   const [editingBeneficiary, setEditingBeneficiary] = useState<BeneficiaryInformation | null>(null);
@@ -103,7 +98,6 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
   const [approvalProcessing, setApprovalProcessing] = useState(false);
   const [showProcessingOverlay, setShowProcessingOverlay] = useState(false);
   const [processingStatusText, setProcessingStatusText] = useState('Processing...');
-  const [showCapitalLegacyConsentModal, setShowCapitalLegacyConsentModal] = useState(false);
   const [showSignatureInfo, setShowSignatureInfo] = useState(false);
 
   // Form states
@@ -183,6 +177,8 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
 
     try {
       setLoading(true);
+      setWillLoadError(null);
+      setWillHTML(null);
       
       // Fetch all data
       const [profile, userExecutors, userBeneficiaries, userAssets, userPolicies] = await Promise.all([
@@ -215,34 +211,8 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
       const beneficiariesForWill = getLinkedBeneficiaries(userBeneficiaries, assetLinksMap, policyLinksMap);
       setBeneficiaries(beneficiariesForWill);
 
-      // Calculate and store estate value if profile and data are available
-      if (profile) {
-        const assetsTotal = userAssets.reduce(
-          (sum, asset) => sum + (asset.asset_value || 0),
-          0
-        );
-        const policiesTotal = userPolicies.reduce(
-          (sum, policy) => sum + (policy.policy_value || 0),
-          0
-        );
-        const totalEstateValue = assetsTotal + policiesTotal;
-
-        updatedProfile = {
-          ...profile,
-          total_estate_value: totalEstateValue,
-        };
-        setUserProfile(updatedProfile);
-
-        try {
-          await UserService.updateUser(profile.user_id, {
-            total_estate_value: totalEstateValue,
-          } as any);
-        } catch (e) {
-          console.warn('[ViewWillScreen] Failed to update estate value:', e);
-        }
-      } else {
-        setUserProfile(profile);
-      }
+      setUserProfile(profile);
+      updatedProfile = profile;
 
       // Generate will HTML
       if (updatedProfile) {
@@ -256,9 +226,12 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
           policyLinksMap
         );
         setWillHTML(html);
+      } else {
+        setWillLoadError('No profile was found for this account. Please complete your profile first.');
       }
     } catch (error) {
       console.error('Error loading will data:', error);
+      setWillLoadError('We could not generate your electronic will. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -385,32 +358,8 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
       setBeneficiaries(beneficiariesForWill);
 
       // Generate new will HTML
-      const assetsTotal = userAssets.reduce(
-        (sum, asset) => sum + (asset.asset_value || 0),
-        0
-      );
-      const policiesTotal = userPolicies.reduce(
-        (sum, policy) => sum + (policy.policy_value || 0),
-        0
-      );
-      const totalEstateValue = assetsTotal + policiesTotal;
-
-      const updatedProfile = {
-        ...userProfile,
-        total_estate_value: totalEstateValue,
-      };
-      setUserProfile(updatedProfile);
-
-      try {
-        await UserService.updateUser(userProfile.user_id, {
-          total_estate_value: totalEstateValue,
-        } as any);
-      } catch (e) {
-        console.warn('[ViewWillScreen] Failed to update estate value on regenerate:', e);
-      }
-
       const html = await generateWillHTML(
-        updatedProfile,
+        userProfile,
         userExecutors.length > 0 ? userExecutors[0] : null,
         beneficiariesForWill,
         userAssets,
@@ -592,67 +541,6 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
     setApprovalModalVisible(true);
   };
 
-  const submitCapitalLegacyLead = useCallback(
-    async () => {
-      if (!currentUser || !userProfile) return;
-      if (!capitalLegacyOptIn) return;
-      if (userProfile.lead_submitted) return;
-
-      try {
-        setCapitalLegacySubmitting(true);
-        const [userAssets, userPolicies, userBeneficiaries] = await Promise.all([
-          AssetService.getUserAssets(currentUser.uid),
-          PolicyService.getUserPolicies(currentUser.uid),
-          BeneficiaryService.getUserBeneficiaries(currentUser.uid),
-        ]);
-
-        const leadData = await buildLeadSubmissionData(
-          userProfile,
-          appointmentType,
-          userAssets,
-          userPolicies,
-          userBeneficiaries
-        );
-
-        const result = await LeadService.submitLead(leadData);
-        if (!result.success || !result.leadId) {
-          Alert.alert(
-            'Capital Legacy',
-            result.error || 'Could not submit your consultation request. Please try again later.'
-          );
-          return;
-        }
-
-        // Mark lead submission + consent
-        await UserService.updateUser(userProfile.user_id, {
-          lead_submission_consent: true,
-          lead_submission_consent_at: new Date(),
-        } as any);
-
-        await LeadService.updateLeadSubmissionStatus(userProfile.user_id, result.leadId);
-
-        const refreshedProfile = await UserService.getUserById(userProfile.user_id);
-        if (refreshedProfile) {
-          setUserProfile(refreshedProfile);
-        }
-
-        Alert.alert(
-          'Capital Legacy',
-          'Your request for a Capital Legacy consultation has been submitted.\n\nWe won’t ask you again unless your estate or contact details change.'
-        );
-      } catch (error) {
-        console.error('[ViewWillScreen] Capital Legacy lead error:', error);
-        Alert.alert(
-          'Capital Legacy',
-          'Something went wrong submitting your consultation request. Please try again later.'
-        );
-      } finally {
-        setCapitalLegacySubmitting(false);
-      }
-    },
-    [currentUser, userProfile, capitalLegacyOptIn, appointmentType]
-  );
-
   const handleApprovalPrint = async (): Promise<boolean> => {
     setApprovalProcessing(true);
     const success = await saveWillDocument();
@@ -750,7 +638,7 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
         <View style={styles.missingInfoBanner}>
           <Ionicons name="alert-circle" size={20} color={theme.colors.warning} />
           <Text style={styles.missingInfoText}>No beneficiaries appointed</Text>
-          <TouchableOpacity onPress={() => setShowAddBeneficiaryModal(true)}>
+          <TouchableOpacity onPress={() => navigation.navigate('AddBeneficiary')}>
             <Text style={styles.missingInfoButton}>Add Beneficiary</Text>
           </TouchableOpacity>
         </View>
@@ -765,7 +653,7 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
         </View>
       )}
 
-      {willHTML && (
+      {willHTML ? (
         <WebView
           originWhitelist={['*']}
           source={{ html: willHTML }}
@@ -785,7 +673,7 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
             } else if (data.type === 'addExecutor') {
               setShowAddExecutorModal(true);
             } else if (data.type === 'addBeneficiary') {
-              setShowAddBeneficiaryModal(true);
+              navigation.navigate('AddBeneficiary');
             }
           }}
           injectedJavaScript={(() => {
@@ -862,6 +750,19 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
             </View>
           )}
         />
+      ) : (
+        <View style={styles.loadingContainer}>
+          <Ionicons name="document-text-outline" size={32} color={theme.colors.textSecondary} />
+          <Text style={styles.loadingText}>
+            {willLoadError || 'Your electronic will is not available right now.'}
+          </Text>
+          <TouchableOpacity
+            style={styles.guidedModalPrimary}
+            onPress={loadWillData}
+          >
+            <Text style={styles.guidedModalPrimaryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       <View style={styles.bottomActions}>
@@ -1319,36 +1220,6 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
                   <Text style={styles.guidedModalPrimaryText}>Got it</Text>
                 </TouchableOpacity>
               </ScrollView>
-            ) : showCapitalLegacyConsentModal ? (
-              <ScrollView style={styles.modalScroll}>
-                <View style={{ alignItems: 'center', paddingVertical: theme.spacing.lg }}>
-                  <Ionicons name="shield-checkmark-outline" size={42} color={theme.colors.primary} />
-                </View>
-                <Text style={[styles.modalTitle, { marginBottom: theme.spacing.md }]}>Capital Legacy Consent</Text>
-                <Text style={[styles.label, { marginBottom: theme.spacing.sm }]}>How your information is used</Text>
-                <Text style={styles.approvalDetailText}>
-                  If you opt in, MiWill will share limited consultation information with our
-                  partner Capital Legacy. This includes your age, employment status, marital
-                  status, full address, consultation type, and whether you have minor children,
-                  property, vehicles, or other assets.
-                </Text>
-                <Text style={[styles.approvalDetailText, { marginTop: theme.spacing.md }]}>
-                  MiWill keeps your POPIA records, internal consent history, estate-value
-                  qualification checks, timestamps, and submission tracking in its own systems.
-                  Those internal compliance fields are not part of the Capital Legacy request body.
-                </Text>
-                <Text style={[styles.approvalDetailText, { marginTop: theme.spacing.md }]}>
-                  Your MiWill account and will remain fully active regardless of whether you choose
-                  to opt in, and you are under no obligation to continue with any consultation that
-                  may be offered.
-                </Text>
-                <TouchableOpacity
-                  style={[styles.guidedModalPrimary, { marginTop: theme.spacing.xl, marginBottom: theme.spacing.xl * 2 }]}
-                  onPress={() => setShowCapitalLegacyConsentModal(false)}
-                >
-                  <Text style={styles.guidedModalPrimaryText}>Got it</Text>
-                </TouchableOpacity>
-              </ScrollView>
             ) : (
             <>
             <View style={styles.approvalOptions}>
@@ -1357,14 +1228,6 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
                 onPress={async () => {
                   setApprovalModalVisible(false);
                   setShowPrintModal(true);
-                  if (
-                    userProfile?.total_estate_value &&
-                    userProfile.total_estate_value >= 250000 &&
-                    userProfile.popia_accepted &&
-                    capitalLegacyOptIn
-                  ) {
-                    await submitCapitalLegacyLead();
-                  }
                 }}
               >
                 <Ionicons name="print-outline" size={24} color={theme.colors.primary} />
@@ -1376,123 +1239,21 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
                 </View>
               </TouchableOpacity>
             </View>
-            {userProfile?.total_estate_value !== undefined &&
-              userProfile.total_estate_value >= 250000 &&
-              userProfile.popia_accepted &&
-              !userProfile.lead_submitted && (
-                <View style={[styles.approvalDetailContainer, { gap: theme.spacing.sm }]}>
-                  <Text style={[styles.approvalOptionTitle, {
-                    fontSize: theme.typography.sizes.xxl,
-                    textAlign: 'center',
-                  }]}>
-                    Well done {userProfile?.first_name || userProfile?.full_name?.split(' ')[0] || 'there'}!
-                  </Text>
-                  <Text style={[styles.approvalDetailText, { textAlign: 'center' }]}>
-                    Estate value —{' '}
-                    <Text style={{ fontWeight: 'bold', color: theme.colors.text }}>
-                      {`R ${(userProfile.total_estate_value ?? 0).toLocaleString('en-ZA', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}`}
-                    </Text>
-                  </Text>
-                  <Text style={styles.approvalDetailText}>
-                    Your estate qualifies for a Capital Legacy consultation. Based on your
-                    recorded estate value exceeding R250 000, you are eligible for a personalised engagement
-                    with one of our trusted estate planning specialists.
-                  </Text>
-                  <Text style={styles.approvalDetailText}>• Estate value above R250 000</Text>
-
-                  <Text style={styles.approvalDetailText}>Will you be attending the consultation:</Text>
-                  <View style={{ flexDirection: 'row', marginTop: theme.spacing.sm, gap: theme.spacing.sm }}>
-                    <TouchableOpacity
-                      style={[
-                        styles.approvalOptionButton,
-                        { flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingVertical: theme.spacing.sm },
-                        appointmentType === 'single' && { borderColor: theme.colors.primary },
-                      ]}
-                      onPress={() => setAppointmentType('single')}
-                    >
-                      <Text style={{ fontSize: theme.typography.sizes.xs, color: 'transparent', lineHeight: 10, marginBottom: 1 }}>with</Text>
-                      <Text style={[styles.approvalOptionTitle, { textAlign: 'center' }]}>Alone</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.approvalOptionButton,
-                        { flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingVertical: theme.spacing.sm },
-                        appointmentType === 'spouse_partner' && { borderColor: theme.colors.primary },
-                      ]}
-                      onPress={() => setAppointmentType('spouse_partner')}
-                    >
-                      <Text style={{ fontSize: theme.typography.sizes.xs, color: theme.colors.textSecondary, lineHeight: 10, marginBottom: 1 }}>with</Text>
-                      <Text style={[styles.approvalOptionTitle, { textAlign: 'center' }]}>Spouse</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.approvalOptionButton,
-                        { flex: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingVertical: theme.spacing.sm },
-                        appointmentType === 'family' && { borderColor: theme.colors.primary },
-                      ]}
-                      onPress={() => setAppointmentType('family')}
-                    >
-                      <Text style={{ fontSize: theme.typography.sizes.xs, color: theme.colors.textSecondary, lineHeight: 10, marginBottom: 1 }}>with</Text>
-                      <Text style={[styles.approvalOptionTitle, { textAlign: 'center' }]}>Family</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={styles.guidedModalCheckboxContainer}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        if (!capitalLegacySubmitting) {
-                          setCapitalLegacyOptIn(!capitalLegacyOptIn);
-                        }
-                      }}
-                      disabled={capitalLegacySubmitting}
-                    >
-                      <View
-                        style={[
-                          styles.guidedModalCheckbox,
-                          capitalLegacyOptIn && styles.guidedModalCheckboxChecked,
-                        ]}
-                      >
-                        {capitalLegacyOptIn && <Text style={styles.guidedModalCheckmark}>✓</Text>}
-                      </View>
-                    </TouchableOpacity>
-                    <Text style={styles.guidedModalCheckboxText}>
-                      I{' '}
-                      <Text
-                        style={styles.consentLink}
-                        onPress={() => setShowCapitalLegacyConsentModal(true)}
-                      >
-                        consent
-                      </Text>{' '}
-                      to MiWill sharing limited consultation information with Capital Legacy for
-                      consultation intake.
-                    </Text>
-                  </View>
-
-                  <TouchableOpacity
-                    style={styles.guidedModalPrimary}
-                    onPress={async () => {
-                      if (approvalProcessing || capitalLegacySubmitting) return;
-                      setApprovalModalVisible(false);
-                      setShowCollectionModal(true);
-                      if (
-                        userProfile?.total_estate_value &&
-                        userProfile.total_estate_value >= 250000 &&
-                        userProfile.popia_accepted &&
-                        capitalLegacyOptIn
-                      ) {
-                        await submitCapitalLegacyLead();
-                      }
-                    }}
-                    disabled={approvalProcessing || capitalLegacySubmitting}
-                  >
-                    <Text style={styles.guidedModalPrimaryText}>
-                      Save & Request Will Collection
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+            <View style={[styles.approvalDetailContainer, { gap: theme.spacing.sm }]}>
+              <TouchableOpacity
+                style={styles.guidedModalPrimary}
+                onPress={async () => {
+                  if (approvalProcessing) return;
+                  setApprovalModalVisible(false);
+                  setShowCollectionModal(true);
+                }}
+                disabled={approvalProcessing}
+              >
+                <Text style={styles.guidedModalPrimaryText}>
+                  Save & Request Will Collection
+                </Text>
+              </TouchableOpacity>
+            </View>
             </>
             )}
           </View>
@@ -1680,7 +1441,7 @@ const ViewWillScreen: React.FC<ViewWillScreenProps> = ({ navigation }) => {
       <View style={styles.fabContainer}>
         <TouchableOpacity
           style={[styles.fab, styles.fabMain]}
-          onPress={() => setShowAddBeneficiaryModal(true)}
+          onPress={() => navigation.navigate('AddBeneficiary')}
         >
           <Ionicons name="add" size={24} color={theme.colors.buttonText} />
         </TouchableOpacity>

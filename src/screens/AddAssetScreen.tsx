@@ -338,7 +338,10 @@ const AddAssetScreen: React.FC<AddAssetScreenProps> = ({ navigation, route }) =>
         setShowToast(true);
         return;
       }
-      setShowEstateBeneficiaryModal(true);
+      navigation.navigate('AddBeneficiary', {
+        fromGuidedFlow: fromGuidedWill,
+        returnTo: fromGuidedWill ? 'Dashboard' : undefined,
+      });
       return;
     }
 
